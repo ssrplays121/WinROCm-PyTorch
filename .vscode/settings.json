@@ -1,0 +1,7 @@
+{
+  "files.exclude": {
+    "**/PLAN.md": true,
+    "**/*.plan": true
+  }
+}
+

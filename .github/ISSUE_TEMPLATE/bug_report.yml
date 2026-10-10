@@ -1,0 +1,62 @@
+name: Bug Report
+description: Report an issue with setup_rocm_portable.ps1 or ROCm environment
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+        Please ensure you run `setup_rocm_portable.ps1 -Diagnose` before submitting and paste the contents of `diagnose.txt` below.
+
+  - type: input
+    id: gpu-model
+    attributes:
+      label: GPU Model
+      description: What AMD GPU model do you have? (e.g., Radeon RX 9060 XT, RX 9070, RX 7900 XTX)
+      placeholder: AMD Radeon RX 9060 XT
+    validations:
+      required: true
+
+  - type: input
+    id: driver-version
+    attributes:
+      label: AMD Adrenalin Driver Version
+      description: The installed driver version from AMD Software or Device Manager.
+      placeholder: 32.0.31041.1004
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows Build / Version
+      description: Output of `winver` or PowerShell `(Get-CimInstance Win32_OperatingSystem).BuildNumber`.
+      placeholder: Windows 11 Build 26300
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnose-output
+    attributes:
+      label: Diagnostic Output (`diagnose.txt`)
+      description: Paste the complete output of `.\setup_rocm_portable.ps1 -Diagnose` (or contents of `diagnose.txt`). Local Windows usernames are automatically redacted to `<user>`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: Describe what happened and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log File Snippet
+      description: Paste relevant error sections from the generated `logs\setup-*.log` transcript. Please redact any personal identifying information before submitting.
+      render: text
+

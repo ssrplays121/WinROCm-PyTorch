@@ -1,0 +1,63 @@
+name: ROCm Release URL Check
+
+on:
+  schedule:
+    # Run every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check-urls:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate URLs in releases.psd1
+        shell: pwsh
+        run: |
+          $config = Import-PowerShellDataFile -Path .\config\releases.psd1
+          $urls = @(
+              $config.PythonZipUrl,
+              $config.GetPipUrl
+          )
+
+          foreach ($relKey in $config.Releases.Keys) {
+              $rel = $config.Releases[$relKey]
+              $base = $rel.BaseUrl
+              foreach ($f in $rel.SdkFiles) {
+                  $urls += "$base/$f"
+              }
+              $urls += "$base/$($rel.Torch)"
+              $urls += "$base/$($rel.Vision)"
+              $urls += "$base/$($rel.Audio)"
+          }
+
+          $urls = $urls | Select-Object -Unique
+          Write-Host "Verifying $($urls.Count) URLs across all releases..." -ForegroundColor Cyan
+
+          $failed = @()
+          foreach ($u in $urls) {
+              try {
+                  $resp = Invoke-WebRequest -Uri $u -Method Head -TimeoutSec 15 -ErrorAction Stop
+                  Write-Host "  [OK $($resp.StatusCode)] $u" -ForegroundColor Green
+              } catch {
+                  try {
+                      # Fallback to ranged GET (first 1024 bytes) if HEAD fails
+                      $resp = Invoke-WebRequest -Uri $u -Headers @{ Range = "bytes=0-1023" } -TimeoutSec 15 -ErrorAction Stop
+                      Write-Host "  [OK $($resp.StatusCode) (GET fallback)] $u" -ForegroundColor Green
+                  } catch {
+                      Write-Host "  [FAILED] $u ($($_.Exception.Message))" -ForegroundColor Red
+                      $failed += $u
+                  }
+              }
+          }
+
+          if ($failed.Count -gt 0) {
+              Write-Error "The following $($failed.Count) URL(s) failed reachability check:`n$($failed -join "`n")"
+              exit 1
+          }
+
+          Write-Host "`nAll release URLs are verified and reachable." -ForegroundColor Green
+

@@ -1,0 +1,43 @@
+name: Lint and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer and Pester
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer, Pester -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path .\setup_rocm_portable.ps1 -Settings .\tests\PSScriptAnalyzerSettings.psd1 -Recurse
+          if ($results) {
+              $results | Format-Table -AutoSize
+              throw "PSScriptAnalyzer detected $($results.Count) violation(s)."
+          } else {
+              Write-Host "PSScriptAnalyzer passed with 0 violations." -ForegroundColor Green
+          }
+
+      - name: Run Pester Tests (PowerShell 7)
+        shell: pwsh
+        run: |
+          Invoke-Pester -Path .\tests\Setup.Tests.ps1 -Output Detailed
+
+      - name: Run Pester Tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          Install-Module -Name Pester -Force -Scope CurrentUser -SkipPublisherCheck
+          Invoke-Pester -Path .\tests\Setup.Tests.ps1 -Output Detailed
+
