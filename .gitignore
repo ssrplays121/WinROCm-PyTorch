@@ -1,0 +1,17 @@
+# Isolated installation directories and temporary files
+python/
+.cache/
+.tmp/
+logs/
+constraints-rocm.txt
+.rocm-portable.json
+diagnose.txt
+*.log
+
+# Generated launchers at repository root (committed sources live in templates/)
+/env_rocm.bat
+/run_rocm.bat
+/pip_rocm.bat
+/shell_rocm.bat
+/env_rocm.ps1
+
