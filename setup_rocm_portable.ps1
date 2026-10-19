@@ -68,10 +68,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-# Ensure TLS 1.2
+# Ensure TLS 1.2 and Utility module
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Import-Module Microsoft.PowerShell.Utility -ErrorAction SilentlyContinue
 
-$Script:Version = "0.1.0"
+$Script:Version = "0.2.0"
 
 # Custom Exception for mapped exit codes
 class SetupException : System.Exception {
@@ -97,6 +98,24 @@ function Get-FileSha256 {
         return $null
     }
     return (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash
+}
+
+function Test-PythonModule {
+    param(
+        [string]$PythonExe,
+        [string]$Code
+    )
+    if (-not (Test-Path -Path $PythonExe)) { return $false }
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $PythonExe -c $Code 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
 }
 
 function Invoke-WithRetry {
@@ -227,13 +246,20 @@ function Test-Preflight {
 
     # 6. Folder writable
     try {
-        if (-not (Test-Path -Path $TargetDir)) {
-            New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
+        $checkDir = $TargetDir
+        while (-not (Test-Path -Path $checkDir) -and -not [string]::IsNullOrEmpty($checkDir)) {
+            $parent = [System.IO.Path]::GetDirectoryName($checkDir)
+            if ($parent -eq $checkDir -or [string]::IsNullOrEmpty($parent)) { break }
+            $checkDir = $parent
         }
-        $testFile = Join-Path $TargetDir ".write_test_$([Guid]::NewGuid().ToString('N'))"
-        [System.IO.File]::WriteAllText($testFile, "ok")
-        Remove-Item -Path $testFile -Force
-        Write-Host "  [Pass] Target folder is writable" -ForegroundColor Green
+        if (-not (Test-Path -Path $checkDir)) {
+            $failures += "Check 6 [Permissions]: Target drive or parent directory for '$TargetDir' does not exist."
+        } else {
+            $testFile = Join-Path $checkDir ".write_test_$([Guid]::NewGuid().ToString('N'))"
+            [System.IO.File]::WriteAllText($testFile, "ok")
+            Remove-Item -Path $testFile -Force
+            Write-Host "  [Pass] Target location is writable" -ForegroundColor Green
+        }
     } catch {
         $failures += "Check 6 [Permissions]: Target folder is not writable: $($_.Exception.Message)"
     }
@@ -356,6 +382,7 @@ function Invoke-DryRun {
 
     $urlsToCheck = @(
         [PSCustomObject]@{ Name = "Python 3.12 Embed"; Url = $Config['PythonZipUrl'] },
+        [PSCustomObject]@{ Name = "Python C-Headers (dev.msi)"; Url = $Config['PythonDevMsiUrl'] },
         [PSCustomObject]@{ Name = "get-pip.py"; Url = $Config['GetPipUrl'] }
     )
 
@@ -377,7 +404,8 @@ function Invoke-DryRun {
         try {
             $resp = Invoke-WebRequest -Uri $item.Url -Method Head -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
             $sizeMB = if ($resp.Headers.ContainsKey('Content-Length')) {
-                [math]::Round($resp.Headers['Content-Length'][0] / 1MB, 2)
+                $rawLen = $resp.Headers['Content-Length'] | Select-Object -First 1
+                [math]::Round([long]$rawLen / 1MB, 2)
             } else { 0 }
             Write-Host ("  [OK {0}] {1} ({2} MB)" -f $resp.StatusCode, $item.Name, $sizeMB) -ForegroundColor Green
         } catch {
@@ -454,9 +482,81 @@ function Initialize-PythonPath {
         New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
     }
 
-    $pthContent = "python312.zip`r`n.`r`n..`r`nLib\site-packages`r`nimport site"
+    # Dynamically derive stdlib zip name from ._pth base name (e.g. python312._pth -> python312.zip)
+    # Exclude '..' to prevent injecting parent directory into sys.path
+    $stdlibZip = "$($pthFile.BaseName).zip"
+    $pthContent = "$stdlibZip`r`n.`r`nLib\site-packages`r`nimport site"
     Set-Content -Path $pthFile.FullName -Value $pthContent -Encoding ASCII
     Write-Host "  Configured $($pthFile.Name) for site-packages and isolated imports." -ForegroundColor Green
+}
+
+function Install-PythonDevHeaders {
+    param(
+        [hashtable]$Config,
+        [string]$TargetDir
+    )
+
+    $pythonDir = Join-Path $TargetDir "python"
+    $includeDir = Join-Path $pythonDir "include"
+    $libsDir = Join-Path $pythonDir "libs"
+    $pythonH = Join-Path $includeDir "Python.h"
+    $pythonLib = Join-Path $libsDir "python312.lib"
+
+    if ((Test-Path -Path $pythonH) -and (Test-Path -Path $pythonLib)) {
+        Write-Host "  Python C/C++ development headers (include/ and libs/) already present. Skipping." -ForegroundColor Green
+        return
+    }
+
+    Write-Host "  Installing Python C/C++ development headers and libraries (include/ and libs/)..." -ForegroundColor Yellow
+    $devMsiUrl = $Config['PythonDevMsiUrl']
+    $devMsiSha = $Config['PythonDevMsiSha256']
+    $tmpDir = Join-Path $TargetDir ".tmp"
+    if (-not (Test-Path -Path $tmpDir)) {
+        New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+    }
+    $devMsi = Join-Path $tmpDir "dev.msi"
+    $extractTmp = Join-Path $tmpDir "dev_msi_extract"
+
+    Invoke-WithRetry -OperationName "Python dev.msi download" -ScriptBlock {
+        Invoke-WebRequest -Uri $devMsiUrl -OutFile $devMsi -UseBasicParsing
+    }
+
+    if (-not [string]::IsNullOrEmpty($devMsiSha)) {
+        $actualSha = Get-FileSha256 -FilePath $devMsi
+        if ($actualSha -ne $devMsiSha) {
+            Remove-Item -Path $devMsi -Force -ErrorAction SilentlyContinue
+            throw [SetupException]::new(3, "dev.msi SHA256 mismatch! Expected: $devMsiSha, Actual: $actualSha")
+        }
+    }
+
+    if (Test-Path -Path $extractTmp) {
+        Remove-Item -Path $extractTmp -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $extractTmp | Out-Null
+
+    # Administrative image unpack via msiexec (requires no admin privileges)
+    $targetArg = "TARGETDIR=" + $extractTmp.TrimEnd('\') + "\"
+    $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList @('/a', $devMsi, '/qn', $targetArg) -Wait -PassThru
+    if ($proc.ExitCode -ne 0) {
+        throw [SetupException]::new(1, "msiexec extraction of dev.msi failed with exit code $($proc.ExitCode)")
+    }
+
+    # Copy include and libs to pythonDir
+    $srcInclude = Join-Path $extractTmp "include"
+    $srcLibs = Join-Path $extractTmp "libs"
+
+    if (Test-Path -Path $srcInclude) {
+        Copy-Item -Path $srcInclude -Destination $pythonDir -Recurse -Force
+    }
+    if (Test-Path -Path $srcLibs) {
+        Copy-Item -Path $srcLibs -Destination $pythonDir -Recurse -Force
+    }
+
+    # Clean up temp
+    Remove-Item -Path $devMsi -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $extractTmp -Recurse -Force -ErrorAction SilentlyContinue
+
+    Write-Host "  Successfully installed Python headers (Python.h) and import libraries." -ForegroundColor Green
 }
 
 function Install-Pip {
@@ -525,12 +625,12 @@ function Install-RocmSdk {
     # Check if already installed
     $matchRelease = (-not $State.ContainsKey('rocmRelease')) -or ($State['rocmRelease'] -eq $rName)
     if ($matchRelease -and (Test-Path -Path $pythonExe)) {
-        $sdkValid = $false
-        try {
-            & $pythonExe -c "import importlib.metadata; importlib.metadata.version('rocm-sdk-core')" 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) { $sdkValid = $true }
-        } catch {
-            $null = $_
+        $sdkValid = $true
+        foreach ($pkg in @("rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom")) {
+            if (-not (Test-PythonModule -PythonExe $pythonExe -Code "import importlib.metadata; importlib.metadata.version('$pkg')")) {
+                $sdkValid = $false
+                break
+            }
         }
         if ($sdkValid) {
             Write-Host "`n[4a/5] ROCm SDK $rName is already installed. Skipping." -ForegroundColor Green
@@ -563,34 +663,38 @@ function Install-Torch {
     $rCfg = $ReleaseInfo['Config']
     $baseUrl = $rCfg['BaseUrl']
 
-    # Check if torch already installed
+    # Check if all requested torch components are already installed
     $matchRelease = (-not $State.ContainsKey('rocmRelease')) -or ($State['rocmRelease'] -eq $rName)
     if ($matchRelease -and (Test-Path -Path $pythonExe)) {
-        $torchValid = $false
-        try {
-            & $pythonExe -c "import torch" 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) { $torchValid = $true }
-        } catch {
-            $null = $_
-        }
-        if ($torchValid) {
-            Write-Host "`n[4b/5] PyTorch for ROCm $rName is already installed. Skipping." -ForegroundColor Green
+        $torchPresent = Test-PythonModule -PythonExe $pythonExe -Code "import torch"
+        $visionPresent = (-not $IncludeVision) -or (Test-PythonModule -PythonExe $pythonExe -Code "import torchvision")
+        $audioPresent = (-not $IncludeAudio) -or (Test-PythonModule -PythonExe $pythonExe -Code "import torchaudio")
+
+        if ($torchPresent -and $visionPresent -and $audioPresent) {
+            Write-Host "`n[4b/5] PyTorch and requested components for ROCm $rName are already installed. Skipping." -ForegroundColor Green
             return
         }
     }
 
     Write-Host "`n[4b/5] Installing AMD ROCm PyTorch wheels..." -ForegroundColor Yellow
-    $torchPackages = @("$baseUrl/$($rCfg['Torch'])")
+    $torchPackages = @()
 
-    if ($IncludeAudio) {
+    $needTorch = -not (Test-PythonModule -PythonExe $pythonExe -Code "import torch")
+    if ($needTorch) {
+        $torchPackages += "$baseUrl/$($rCfg['Torch'])"
+    }
+
+    if ($IncludeAudio -and -not (Test-PythonModule -PythonExe $pythonExe -Code "import torchaudio")) {
         $torchPackages += "$baseUrl/$($rCfg['Audio'])"
     }
-    if ($IncludeVision) {
+    if ($IncludeVision -and -not (Test-PythonModule -PythonExe $pythonExe -Code "import torchvision")) {
         $torchPackages += "$baseUrl/$($rCfg['Vision'])"
     }
 
-    & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 @torchPackages
-    Assert-LastExit "PyTorch ROCm installation" 4
+    if ($torchPackages.Count -gt 0) {
+        & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 @torchPackages
+        Assert-LastExit "PyTorch ROCm installation" 4
+    }
 }
 
 function Write-Launchers {
@@ -599,19 +703,31 @@ function Write-Launchers {
         [string]$TargetDir
     )
 
-    Write-Host "`n[5/5] Refreshing launcher scripts from templates..." -ForegroundColor Yellow
-    $launcherFiles = @("env_rocm.bat", "run_rocm.bat", "pip_rocm.bat", "shell_rocm.bat", "env_rocm.ps1")
+    Write-Host "`n[5/5] Refreshing launcher scripts from templates into bin/..." -ForegroundColor Yellow
+    $binDir = Join-Path $TargetDir "bin"
+    if (-not (Test-Path -Path $binDir)) {
+        New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    }
+
+    $launcherFiles = @("env_rocm.bat", "run_rocm.bat", "pip_rocm.bat", "shell_rocm.bat", "torchrun_rocm.bat", "env_rocm.ps1")
 
     foreach ($f in $launcherFiles) {
         $src = Join-Path $TemplateDir $f
-        $dst = Join-Path $TargetDir $f
+        $dst = Join-Path $binDir $f
         if (Test-Path -Path $src) {
             Copy-Item -Path $src -Destination $dst -Force
         } else {
             throw [SetupException]::new(1, "Required launcher template not found: $src")
         }
     }
-    Write-Host "  Launchers written to $TargetDir." -ForegroundColor Green
+
+    # Also copy verify_rocm.py into bin/ for easy user access
+    $verifySrc = Join-Path $TemplateDir "verify_rocm.py"
+    if (Test-Path -Path $verifySrc) {
+        Copy-Item -Path $verifySrc -Destination (Join-Path $binDir "verify_rocm.py") -Force
+    }
+
+    Write-Host "  Launchers and verify test written to $binDir." -ForegroundColor Green
 }
 
 function Write-Constraints {
@@ -753,8 +869,10 @@ function Invoke-Diagnose {
 
         # Pip list for rocm/torch
         $diagLines.Add("--- Installed Packages (ROCm & PyTorch) ---")
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
         try {
-            $pkgList = (& $pythonExe -m pip list 2>&1)
+            $pkgList = (& $pythonExe -m pip list 2>$null)
             foreach ($line in $pkgList) {
                 if ($line -match "torch|rocm|hip") {
                     $diagLines.Add("  $line")
@@ -781,24 +899,32 @@ except Exception as e:
     print("probe_error:", e)
 '@
         try {
-            $probeOutput = ($probeCode | & $pythonExe - 2>&1)
+            $probeOutput = ($probeCode | & $pythonExe - 2>$null)
             foreach ($po in $probeOutput) {
                 $diagLines.Add("  $po")
             }
         } catch {
             $diagLines.Add("  Probe failed to execute: $($_.Exception.Message)")
+        } finally {
+            $ErrorActionPreference = $prevEAP
         }
     }
 
-    # Redact username
+    # Redact user paths and usernames safely
+    $userProfile = $env:USERPROFILE
     $currentUser = $env:USERNAME
     $redactedLines = [System.Collections.Generic.List[string]]::new()
     foreach ($line in $diagLines) {
-        if (-not [string]::IsNullOrEmpty($currentUser)) {
-            $redactedLines.Add($line.Replace($currentUser, "<user>"))
-        } else {
-            $redactedLines.Add($line)
+        $l = $line
+        if (-not [string]::IsNullOrEmpty($userProfile)) {
+            $l = $l -ireplace [regex]::Escape($userProfile), "<userprofile>"
         }
+        if (-not [string]::IsNullOrEmpty($currentUser) -and $currentUser.Length -ge 2) {
+            # Only redact username when in a path segment (surrounded by \ or /) to avoid corrupting GPU/package names
+            $userPattern = '([\\/])' + [regex]::Escape($currentUser) + '([\\/''"\s]|$)'
+            $l = $l -ireplace $userPattern, '$1<user>$2'
+        }
+        $redactedLines.Add($l)
     }
 
     # Write to diagnose.txt
@@ -841,18 +967,13 @@ function Invoke-Main {
         [switch]$Unattended
     )
 
-    # Resolve TargetInstallDir
+    # Resolve TargetInstallDir to full absolute path without creating on disk
     $resolvedInstallDir = if ([string]::IsNullOrWhiteSpace($TargetInstallDir)) {
         if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
     } else {
         $TargetInstallDir
     }
-
-    # Resolve to full absolute path
-    if (-not (Test-Path -Path $resolvedInstallDir)) {
-        New-Item -ItemType Directory -Force -Path $resolvedInstallDir | Out-Null
-    }
-    $resolvedInstallDir = (Resolve-Path -Path $resolvedInstallDir).Path
+    $resolvedInstallDir = [System.IO.Path]::GetFullPath($resolvedInstallDir)
 
     $templateDir = Join-Path $PSScriptRoot "templates"
     if (-not (Test-Path -Path $templateDir)) {
@@ -872,6 +993,22 @@ function Invoke-Main {
 
     # Handle -Diagnose
     if ($IsDiagnose) {
+        $pythonDir = Join-Path $resolvedInstallDir "python"
+        $binDir    = Join-Path $resolvedInstallDir "bin"
+        $tmpDir    = Join-Path $resolvedInstallDir ".tmp"
+        $cacheDir  = Join-Path $resolvedInstallDir ".cache"
+
+        $env:PATH                          = "$binDir;$pythonDir;$pythonDir\Scripts;$env:PATH"
+        $env:PYTHONNOUSERSITE              = "1"
+        $env:TEMP                          = $tmpDir
+        $env:TMP                           = $tmpDir
+        $env:XDG_CACHE_HOME                = $cacheDir
+        $env:TORCH_HOME                    = "$cacheDir\torch"
+        $env:HF_HOME                       = "$cacheDir\huggingface"
+        $env:TRITON_CACHE_DIR              = "$cacheDir\triton"
+        $env:MIOPEN_USER_DB_PATH           = "$cacheDir\miopen"
+        $env:MIOPEN_CUSTOM_CACHE_DIR       = "$cacheDir\miopen"
+
         Invoke-Diagnose -Config $config -TargetDir $resolvedInstallDir -ScriptVer $Script:Version
         return
     }
@@ -911,6 +1048,11 @@ function Invoke-Main {
         if (-not ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLower() -eq 'y')) {
             throw [SetupException]::new(2, "Installation cancelled by user.")
         }
+    }
+
+    # Ensure target directory exists on disk only after confirmation
+    if (-not (Test-Path -Path $resolvedInstallDir)) {
+        New-Item -ItemType Directory -Force -Path $resolvedInstallDir | Out-Null
     }
 
     # Transcript Logging
@@ -999,6 +1141,9 @@ function Invoke-Main {
         # Step 2: Configure _pth
         Initialize-PythonPath -TargetDir $resolvedInstallDir
 
+        # Step 2b: Python C/C++ Headers and Libs (dev.msi)
+        Install-PythonDevHeaders -Config $config -TargetDir $resolvedInstallDir
+
         # Step 3: Bootstrap Pip
         Install-Pip -Config $config -TargetDir $resolvedInstallDir
 
@@ -1008,7 +1153,7 @@ function Invoke-Main {
         # Step 4b: PyTorch
         Install-Torch -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:$includeVision -IncludeAudio:$includeAudio -State $existingState
 
-        # Step 5: Launchers
+        # Step 5: Launchers into bin/
         Write-Launchers -TemplateDir $templateDir -TargetDir $resolvedInstallDir
 
         # Step 6: Constraints
@@ -1037,11 +1182,15 @@ function Invoke-Main {
         Get-ChildItem -Path $tmpDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
         Write-Host "`n==> ROCm Portable installation completed successfully!" -ForegroundColor Green
-        Write-Host "Launchers available in: $resolvedInstallDir" -ForegroundColor Cyan
-        Write-Host "  Run Python script: .\run_rocm.bat <script.py>" -ForegroundColor Cyan
-        Write-Host "  Install packages : .\pip_rocm.bat install <package>" -ForegroundColor Cyan
-        Write-Host "  Interactive shell: .\shell_rocm.bat" -ForegroundColor Cyan
-        Write-Host "  PowerShell env   : . .\env_rocm.ps1`n" -ForegroundColor Cyan
+        Write-Host "Launchers available in: $(Join-Path $resolvedInstallDir 'bin')" -ForegroundColor Cyan
+        Write-Host "  Run Python script: .\bin\run_rocm.bat <script.py>" -ForegroundColor Cyan
+        Write-Host "  Install packages : .\bin\pip_rocm.bat install <package>" -ForegroundColor Cyan
+        Write-Host "  Distributed train: .\bin\torchrun_rocm.bat <train.py>" -ForegroundColor Cyan
+        Write-Host "  Interactive shell: .\bin\shell_rocm.bat" -ForegroundColor Cyan
+        Write-Host "  PowerShell env   : . .\bin\env_rocm.ps1`n" -ForegroundColor Cyan
+        Write-Host "[TIP] To make these commands globally accessible from ANY directory without prefixing:" -ForegroundColor Yellow
+        Write-Host "      Run: .\scripts\add_to_path.ps1" -ForegroundColor Yellow
+        Write-Host "      (This adds 'bin\' to your Windows User PATH while keeping global Python undisturbed.)`n" -ForegroundColor Yellow
     } finally {
         if ($transcriptActive) {
             try { Stop-Transcript | Out-Null } catch { $null = $_ }

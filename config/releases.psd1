@@ -3,6 +3,8 @@
     PythonVersion     = '3.12.8'
     PythonZipUrl      = 'https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip'
     PythonSha256      = '8D3F33BE9EB810F23C102F08475AF2854E50484B8E4E06275E937BE61CE3D2FB'
+    PythonDevMsiUrl   = 'https://www.python.org/ftp/python/3.12.8/amd64/dev.msi'
+    PythonDevMsiSha256= '041326640A9B3A9FF64D6F56624C9648D53FDDCDA3BF3EA1FCB8D0F4EFBEEB1E'
     GetPipUrl         = 'https://bootstrap.pypa.io/get-pip.py'
     GetPipSha256      = 'FB24E693BAB954209A063D90953621412CCAD4A500905A726286E038F508DDF6'
     PipVersion        = '26.2.1'
