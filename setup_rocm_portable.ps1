@@ -632,7 +632,7 @@ for d in sorted(distributions(), key=lambda d: d.metadata["Name"].lower()):
 print("\n".join(lines))
 '@
 
-    $output = & $pythonExe -c $pyCode
+    $output = $pyCode | & $pythonExe -
     Assert-LastExit "Constraints generation" 1
 
     Set-Content -Path $constraintsFile -Value $output -Encoding ASCII
@@ -781,7 +781,7 @@ except Exception as e:
     print("probe_error:", e)
 '@
         try {
-            $probeOutput = (& $pythonExe -c $probeCode 2>&1)
+            $probeOutput = ($probeCode | & $pythonExe - 2>&1)
             foreach ($po in $probeOutput) {
                 $diagLines.Add("  $po")
             }

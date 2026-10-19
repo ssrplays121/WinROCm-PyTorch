@@ -177,6 +177,24 @@ torchvision==0.24.1+rocmsdk20260116
             $line | Should -Match '^[a-zA-Z0-9_\-]+==[a-zA-Z0-9_\.\+\-]+$'
         }
     }
+
+    It "Constraints python script executes without syntax error when passed via stdin" {
+        $systemPython = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+        if ($systemPython) {
+            $pyCode = @'
+from importlib.metadata import distributions
+want = {"torch", "torchvision", "torchaudio", "rocm", "rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom"}
+lines = []
+for d in sorted(distributions(), key=lambda d: d.metadata["Name"].lower()):
+    name = d.metadata["Name"]
+    if name.lower().replace("_", "-") in want:
+        lines.append(f"{name}=={d.version}")
+print("\n".join(lines))
+'@
+            $null = $pyCode | & $systemPython -
+            $global:LASTEXITCODE | Should -Be 0
+        }
+    }
 }
 
 Describe "ROCm Portable - Assert-LastExit and Exit Codes" {
