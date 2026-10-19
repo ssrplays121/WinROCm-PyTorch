@@ -32,6 +32,8 @@ Describe "ROCm Portable - Release Configuration" {
         $config.DefaultRelease | Should -Be '7.2'
         $config.PythonVersion | Should -Be '3.12.8'
         $config.PythonSha256 | Should -Not -BeNullOrEmpty
+        $config.PythonDevMsiUrl | Should -Not -BeNullOrEmpty
+        $config.PythonDevMsiSha256 | Should -Not -BeNullOrEmpty
         $config.GetPipSha256 | Should -Not -BeNullOrEmpty
     }
 
@@ -101,6 +103,7 @@ Describe "ROCm Portable - Templates" {
             "run_rocm.bat",
             "pip_rocm.bat",
             "shell_rocm.bat",
+            "torchrun_rocm.bat",
             "env_rocm.ps1",
             "verify_rocm.py"
         )
@@ -125,7 +128,7 @@ Describe "ROCm Portable - Templates" {
 }
 
 Describe "ROCm Portable - Preflight Path Checks" {
-    It "Rejects install paths exceeding 100 characters" {
+    It "Rejects install paths exceeding 100 characters and creates no folder on disk" {
         $longPath = "C:\" + ("a" * 105)
         $config = Import-PowerShellDataFile -Path $script:configPath
         { Test-Preflight -Config $config -TargetDir $longPath -SelectedRelease "7.2" -SkipGpu } | Should -Throw
@@ -134,9 +137,10 @@ Describe "ROCm Portable - Preflight Path Checks" {
         } catch [SetupException] {
             $_.Exception.ExitCode | Should -Be 2
         }
+        (Test-Path -Path $longPath) | Should -Be $false
     }
 
-    It "Rejects install paths with non-ASCII characters" {
+    It "Rejects install paths with non-ASCII characters and creates no folder on disk" {
         $unicodePath = "C:\rocm_unicode_" + [char]0x6D4B + [char]0x8BD5
         $config = Import-PowerShellDataFile -Path $script:configPath
         { Test-Preflight -Config $config -TargetDir $unicodePath -SelectedRelease "7.2" -SkipGpu } | Should -Throw
@@ -145,6 +149,7 @@ Describe "ROCm Portable - Preflight Path Checks" {
         } catch [SetupException] {
             $_.Exception.ExitCode | Should -Be 2
         }
+        (Test-Path -Path $unicodePath) | Should -Be $false
     }
 
     It "Allows paths with special characters like % and & with warning only" {
@@ -239,6 +244,15 @@ Describe "ROCm Portable - DryRun" {
         { Invoke-DryRun -Config $config -ReleaseInfo $relInfo -TargetDir $testTarget -IncludeVision:$true -IncludeAudio:$true } | Should -Not -Throw
         (Test-Path -Path (Join-Path $testTarget "python")) | Should -Be $false
     }
+
+    It "DryRun leaves a non-existent target directory uncreated on disk" {
+        $nonExistent = Join-Path $TestDrive "non_existent_dryrun_target"
+        $config = Import-PowerShellDataFile -Path $script:configPath
+        $relInfo = Get-ReleaseConfig -Config $config -RequestedRelease "7.2"
+
+        { Invoke-DryRun -Config $config -ReleaseInfo $relInfo -TargetDir $nonExistent -IncludeVision:$true -IncludeAudio:$true } | Should -Not -Throw
+        (Test-Path -Path $nonExistent) | Should -Be $false
+    }
 }
 
 Describe "ROCm Portable - CLI Diagnostics" {
@@ -252,3 +266,28 @@ Describe "ROCm Portable - CLI Diagnostics" {
         (Test-Path -Path (Join-Path $testTarget "diagnose.txt")) | Should -Be $true
     }
 }
+
+Describe "ROCm Portable - Bootstrapper and PATH Management" {
+    It "Root setup.bat exists and delegates to setup_rocm_portable.ps1" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        (Test-Path -Path $setupBat) | Should -Be $true
+        $content = Get-Content -Path $setupBat -Raw
+        $content | Should -Match "setup_rocm_portable\.ps1"
+        $content | Should -Match "-ExecutionPolicy Bypass"
+    }
+
+    It "scripts/add_to_path.ps1 and scripts/remove_from_path.ps1 exist" {
+        $addScript = Join-Path $script:repoRoot "scripts\add_to_path.ps1"
+        $removeScript = Join-Path $script:repoRoot "scripts\remove_from_path.ps1"
+        (Test-Path -Path $addScript) | Should -Be $true
+        (Test-Path -Path $removeScript) | Should -Be $true
+    }
+
+    It "add_to_path.ps1 fails cleanly when bin directory does not exist" {
+        $testDir = Join-Path $TestDrive "no_bin_dir"
+        New-Item -ItemType Directory -Force -Path $testDir | Out-Null
+        $addScript = Join-Path $script:repoRoot "scripts\add_to_path.ps1"
+        { & $addScript -InstallDir $testDir } | Should -Throw
+    }
+}
+
