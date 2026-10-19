@@ -41,7 +41,7 @@ We recommend installing into a short path (e.g. `C:\rocm`) to avoid Windows `MAX
 
 ```powershell
 # 1. Clone repository
-git clone https://github.com/winrocm-pytorch/winrocm-pytorch.git C:\rocm
+git clone https://github.com/ssrplays121/WinROCm-PyTorch.git C:\rocm
 cd C:\rocm
 
 # 2. Run the installer (interactive confirmation prompt)
