@@ -7,11 +7,24 @@ if exist "%~dp0..\python\python.exe" (
     for %%I in ("%~dp0.") do set "ROCM_ROOT=%%~fI"
 )
 
-rem Idempotently prepend isolated paths to PATH
+rem Idempotently prepend isolated paths to PATH with strict DLL search precedence (ROCm/TheRock#5447)
 echo ";%PATH%;" | findstr /i /c:";%ROCM_ROOT%\python;" >nul
 if errorlevel 1 (
-    set "PATH=%ROCM_ROOT%\bin;%ROCM_ROOT%\python;%ROCM_ROOT%\python\Scripts;%PATH%"
+    set "PATH=%ROCM_ROOT%\bin;%ROCM_ROOT%\python;%ROCM_ROOT%\python\Scripts;%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_libraries_custom\bin;%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_core\bin;%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel\bin;%PATH%"
 )
+
+set "TORCH_BLAS_PREFER_HIPBLASLT=1"
+if exist "%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel" (
+    set "ROCM_PATH=%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel"
+    set "HIP_PATH=%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel"
+)
+
+rem Optional TunableOp auto-tuning configuration
+rem set "PYTORCH_TUNABLEOP_ENABLED=1"
+rem set "PYTORCH_TUNABLEOP_FILENAME=%ROCM_ROOT%\.cache\tunableop_results.csv"
+
+rem Optional MIOpen bypass toggle (uncomment if experiencing Conv2d workspace=0 slowdowns #3077)
+rem set "ROCM_DISABLE_MIOPEN=1"
 
 set "PYTHONNOUSERSITE=1"
 set "TEMP=%ROCM_ROOT%\.tmp"

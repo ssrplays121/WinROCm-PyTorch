@@ -105,7 +105,8 @@ Describe "ROCm Portable - Templates" {
             "shell_rocm.bat",
             "torchrun_rocm.bat",
             "env_rocm.ps1",
-            "verify_rocm.py"
+            "verify_rocm.py",
+            "sitecustomize.py"
         )
         foreach ($tmpl in $expectedTemplates) {
             $tmplPath = Join-Path $script:templateDir $tmpl
@@ -113,16 +114,29 @@ Describe "ROCm Portable - Templates" {
         }
     }
 
-    It "env_rocm.bat configures process isolation and constraints-rocm.txt" {
+    It "sitecustomize.py configures toolchain discovery and stability shims" {
+        $content = Get-Content -Path (Join-Path $script:templateDir "sitecustomize.py") -Raw
+        $content | Should -Match "TORCH_BLAS_PREFER_HIPBLASLT"
+        $content | Should -Match "_discover_and_inject_toolchains"
+        $content | Should -Match "_safe_normalize"
+        $content | Should -Match "_safe_batch_norm"
+        $content | Should -Match "MetaPathFinder"
+    }
+
+    It "env_rocm.bat configures process isolation, DLL precedence, and performance tuning" {
         $content = Get-Content -Path (Join-Path $script:templateDir "env_rocm.bat") -Raw
         $content | Should -Match "set `"PYTHONNOUSERSITE=1`""
         $content | Should -Match "set `"PIP_NO_CACHE_DIR=1`""
+        $content | Should -Match "_rocm_sdk_libraries_custom\\bin"
+        $content | Should -Match "TORCH_BLAS_PREFER_HIPBLASLT=1"
         $content | Should -Match "constraints-rocm\.txt"
     }
 
-    It "env_rocm.ps1 configures process isolation and constraints-rocm.txt" {
+    It "env_rocm.ps1 configures process isolation, DLL precedence, and performance tuning" {
         $content = Get-Content -Path (Join-Path $script:templateDir "env_rocm.ps1") -Raw
         $content | Should -Match '\$env:PYTHONNOUSERSITE = "1"'
+        $content | Should -Match '_rocm_sdk_libraries_custom\\bin'
+        $content | Should -Match '\$env:TORCH_BLAS_PREFER_HIPBLASLT = "1"'
         $content | Should -Match 'constraints-rocm\.txt'
     }
 }
@@ -188,7 +202,7 @@ torchvision==0.24.1+rocmsdk20260116
         if ($systemPython) {
             $pyCode = @'
 from importlib.metadata import distributions
-want = {"torch", "torchvision", "torchaudio", "rocm", "rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom"}
+want = {"torch", "torchvision", "torchaudio", "rocm", "rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom", "triton", "triton-windows"}
 lines = []
 for d in sorted(distributions(), key=lambda d: d.metadata["Name"].lower()):
     name = d.metadata["Name"]
@@ -198,6 +212,33 @@ print("\n".join(lines))
 '@
             $null = $pyCode | & $systemPython -
             $global:LASTEXITCODE | Should -Be 0
+        }
+    }
+}
+
+Describe "ROCm Portable - Triton Dynamic Version Mapping" {
+    It "Maps PyTorch versions to matching triton-windows release tracks" {
+        $testCases = @(
+            @{ Minor = "2.6"; Expected = "triton-windows>=3.2,<3.3" },
+            @{ Minor = "2.8"; Expected = "triton-windows>=3.4,<3.5" },
+            @{ Minor = "2.9"; Expected = "triton-windows>=3.5,<3.6" },
+            @{ Minor = "2.14"; Expected = "triton-windows>=3.8,<3.9" }
+        )
+        foreach ($tc in $testCases) {
+            $spec = switch ($tc.Minor) {
+                "2.6"  { "triton-windows>=3.2,<3.3" }
+                "2.7"  { "triton-windows>=3.3,<3.4" }
+                "2.8"  { "triton-windows>=3.4,<3.5" }
+                "2.9"  { "triton-windows>=3.5,<3.6" }
+                "2.10" { "triton-windows>=3.6,<3.7" }
+                "2.11" { "triton-windows>=3.6,<3.7" }
+                "2.12" { "triton-windows>=3.7,<3.8" }
+                "2.13" { "triton-windows>=3.7,<3.8" }
+                "2.14" { "triton-windows>=3.8,<3.9" }
+                "2.15" { "triton-windows>=3.8,<3.9" }
+                default { "triton-windows>=3.8,<3.10" }
+            }
+            $spec | Should -Be $tc.Expected
         }
     }
 }

@@ -11,6 +11,12 @@
     SetuptoolsVersion = '84.0.0'
     WheelVersion      = '0.48.0'
 
+    # Multi-Arch Unified Stream Repositories
+    StreamUrls = @{
+        'stable'  = 'https://stable.repo.amd.com/rocm/whl-next/'
+        'nightly' = 'https://nightly.repo.amd.com/rocm/whl-next/'
+    }
+
     Releases = @{
         '7.2' = @{
             BaseUrl   = 'https://repo.radeon.com/rocm/windows/rocm-rel-7.2'
@@ -45,4 +51,3 @@
         'Ryzen AI Max', 'Ryzen AI 9'
     )
 }
-

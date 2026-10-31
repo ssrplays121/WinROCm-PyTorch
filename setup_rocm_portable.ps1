@@ -19,6 +19,9 @@
 .PARAMETER NoAudio
     Skip installation of torchaudio.
 
+.PARAMETER WithTriton
+    Download and install version-matched triton-windows wheel from PyPI for torch.compile acceleration.
+
 .PARAMETER Reinstall
     Wipe existing .\python, state file, and constraints file, then reinstall cleanly.
 
@@ -56,6 +59,7 @@ param(
     [string]$RocmRelease,
     [switch]$NoVision,
     [switch]$NoAudio,
+    [switch]$WithTriton,
     [switch]$Reinstall,
     [switch]$SkipGpuCheck,
     [switch]$SkipVerify,
@@ -340,6 +344,22 @@ function Test-Preflight {
         }
     }
 
+    # 12. MSVC C++ Build Tools & Windows SDK (Advisory Check)
+    $hasMsvc = $false
+    $progRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432) | Where-Object { -not [string]::IsNullOrEmpty($_) } | Select-Object -Unique
+    foreach ($r in $progRoots) {
+        $msvcMatches = Get-ChildItem -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\include\type_traits") -ErrorAction SilentlyContinue
+        if ($msvcMatches) {
+            $hasMsvc = $true
+            break
+        }
+    }
+    if ($hasMsvc) {
+        Write-Host "  [Pass] MSVC C++ Build Tools detected (MIOpen JIT headers available)" -ForegroundColor Green
+    } else {
+        $warnings += "Check 12 [Advisory - MSVC Build Tools]: Visual Studio 2022/2026 C++ Build Tools (<type_traits>) not found. MIOpen JIT for BatchNorm on >32x32 tensors will automatically fall back to native ATen kernels via sitecustomize.py. To enable hardware MIOpen JIT compilation, install Visual Studio Build Tools with the 'Desktop development with C++' workload."
+    }
+
     # Output warnings and failures
     foreach ($w in $warnings) {
         Write-Warning $w
@@ -362,18 +382,24 @@ function Invoke-DryRun {
         [hashtable]$ReleaseInfo,
         [string]$TargetDir,
         [bool]$IncludeVision,
-        [bool]$IncludeAudio
+        [bool]$IncludeAudio,
+        [bool]$IncludeTriton = $false
     )
 
     $rName = $ReleaseInfo['Name']
     $rCfg = $ReleaseInfo['Config']
     $baseUrl = $rCfg['BaseUrl']
 
+    $compNames = @("torch")
+    if ($IncludeVision) { $compNames += "torchvision" }
+    if ($IncludeAudio) { $compNames += "torchaudio" }
+    if ($IncludeTriton) { $compNames += "triton-windows" }
+
     Write-Host "================== DRY RUN PLAN ==================" -ForegroundColor Cyan
     Write-Host "ROCm Release        : $rName"
     Write-Host "Install Directory   : $TargetDir"
     Write-Host "Python Version      : $($Config['PythonVersion'])"
-    Write-Host "Components          : torch$(if ($IncludeVision) { ', torchvision' })$(if ($IncludeAudio) { ', torchaudio' })"
+    Write-Host "Components          : $($compNames -join ', ')"
     Write-Host "Download Size (est) : ~3.5 GB"
     Write-Host "Disk Required (est) : ~11 GB installed, 15 GB peak"
     Write-Host "==================================================" -ForegroundColor Cyan
@@ -633,6 +659,12 @@ function Install-RocmSdk {
             }
         }
         if ($sdkValid) {
+            $develInc = Join-Path $pythonDir "Lib\site-packages\_rocm_sdk_devel\include\hip\hip_runtime.h"
+            if (-not (Test-Path -Path $develInc)) {
+                Write-Host "  Expanding ROCm developer headers (rocm-sdk init)..." -ForegroundColor Yellow
+                & $pythonExe -m rocm_sdk init
+                Assert-LastExit "ROCm SDK init" 4
+            }
             Write-Host "`n[4a/5] ROCm SDK $rName is already installed. Skipping." -ForegroundColor Green
             return
         }
@@ -646,6 +678,13 @@ function Install-RocmSdk {
 
     & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 @sdkPackages
     Assert-LastExit "ROCm SDK installation" 4
+
+    $develInc = Join-Path $pythonDir "Lib\site-packages\_rocm_sdk_devel\include\hip\hip_runtime.h"
+    if (-not (Test-Path -Path $develInc)) {
+        Write-Host "  Expanding ROCm developer headers (rocm-sdk init)..." -ForegroundColor Yellow
+        & $pythonExe -m rocm_sdk init
+        Assert-LastExit "ROCm SDK init" 4
+    }
 }
 
 function Install-Torch {
@@ -697,6 +736,35 @@ function Install-Torch {
     }
 }
 
+function Install-Triton {
+    param(
+        [string]$TargetDir
+    )
+
+    $pythonDir = Join-Path $TargetDir "python"
+    $pythonExe = Join-Path $pythonDir "python.exe"
+
+    Write-Host "`n[4c/5] Installing version-matched triton-windows..." -ForegroundColor Yellow
+    $torchMinor = (& $pythonExe -c "import torch; v=torch.__version__.split('.'); print(f'{v[0]}.{v[1]}')" 2>$null).Trim()
+    $tritonSpec = switch ($torchMinor) {
+        "2.6"  { "triton-windows>=3.2,<3.3" }
+        "2.7"  { "triton-windows>=3.3,<3.4" }
+        "2.8"  { "triton-windows>=3.4,<3.5" }
+        "2.9"  { "triton-windows>=3.5,<3.6" }
+        "2.10" { "triton-windows>=3.6,<3.7" }
+        "2.11" { "triton-windows>=3.6,<3.7" }
+        "2.12" { "triton-windows>=3.7,<3.8" }
+        "2.13" { "triton-windows>=3.7,<3.8" }
+        "2.14" { "triton-windows>=3.8,<3.9" }
+        "2.15" { "triton-windows>=3.8,<3.9" }
+        default { "triton-windows>=3.8,<3.10" }
+    }
+
+    Write-Host "  Resolved triton-windows specification for PyTorch $($torchMinor): $tritonSpec" -ForegroundColor Cyan
+    & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 $tritonSpec
+    Assert-LastExit "triton-windows installation" 4
+}
+
 function Write-Launchers {
     param(
         [string]$TemplateDir,
@@ -727,6 +795,14 @@ function Write-Launchers {
         Copy-Item -Path $verifySrc -Destination (Join-Path $binDir "verify_rocm.py") -Force
     }
 
+    # Install sitecustomize.py runtime shim into python\Lib\site-packages\
+    $sitePackages = Join-Path $TargetDir "python\Lib\site-packages"
+    $siteShimSrc  = Join-Path $TemplateDir "sitecustomize.py"
+    if (Test-Path -Path $siteShimSrc) {
+        Copy-Item -Path $siteShimSrc -Destination (Join-Path $sitePackages "sitecustomize.py") -Force
+        Write-Host "  Installed sitecustomize.py runtime shim to site-packages." -ForegroundColor Green
+    }
+
     Write-Host "  Launchers and verify test written to $binDir." -ForegroundColor Green
 }
 
@@ -739,7 +815,7 @@ function Write-Constraints {
 
     $pyCode = @'
 from importlib.metadata import distributions
-want = {"torch", "torchvision", "torchaudio", "rocm", "rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom"}
+want = {"torch", "torchvision", "torchaudio", "rocm", "rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom", "triton", "triton-windows"}
 lines = []
 for d in sorted(distributions(), key=lambda d: d.metadata["Name"].lower()):
     name = d.metadata["Name"]
@@ -884,22 +960,9 @@ function Invoke-Diagnose {
 
         # Python probe
         $diagLines.Add("--- PyTorch Probe ---")
-        $probeCode = @'
-import sys
-try:
-    import torch
-    print("torch_version:", torch.__version__)
-    print("torch_file:", torch.__file__)
-    print("hip_version:", getattr(torch.version, "hip", None))
-    print("cuda_available:", torch.cuda.is_available())
-    print("device_count:", torch.cuda.device_count())
-    if torch.cuda.is_available():
-        print("device_name:", torch.cuda.get_device_name(0))
-except Exception as e:
-    print("probe_error:", e)
-'@
+        $probeCmd = "import os, sys, torch; print('torch_version:', torch.__version__); print('torch_file:', torch.__file__); print('hip_version:', getattr(torch.version, 'hip', None)); print('cuda_version:', getattr(torch.version, 'cuda', None)); print('cuda_available:', torch.cuda.is_available()); print('device_count:', torch.cuda.device_count()); print('device_name:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'); print('rocm_path:', os.environ.get('ROCM_PATH', 'None')); print('hipblaslt_prefer:', os.environ.get('TORCH_BLAS_PREFER_HIPBLASLT', 'None')); print('tunable_support:', getattr(torch.cuda, 'tunable', None) is not None); print('cudnn_miopen_enabled:', torch.backends.cudnn.enabled); (lambda: print('triton_version:', __import__('triton').__version__) if __import__('importlib.util').util.find_spec('triton') else print('triton_version: Not installed'))()"
         try {
-            $probeOutput = ($probeCode | & $pythonExe - 2>$null)
+            $probeOutput = (& $pythonExe -c $probeCmd 2>&1)
             foreach ($po in $probeOutput) {
                 $diagLines.Add("  $po")
             }
@@ -959,6 +1022,7 @@ function Invoke-Main {
         [string]$SelectedRelease,
         [switch]$SkipVision,
         [switch]$SkipAudio,
+        [switch]$IncludeTriton,
         [switch]$ForceReinstall,
         [switch]$SkipGpu,
         [switch]$NoVerification,
@@ -998,7 +1062,17 @@ function Invoke-Main {
         $tmpDir    = Join-Path $resolvedInstallDir ".tmp"
         $cacheDir  = Join-Path $resolvedInstallDir ".cache"
 
-        $env:PATH                          = "$binDir;$pythonDir;$pythonDir\Scripts;$env:PATH"
+        $rocmCustomLib = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_libraries_custom\bin"
+        $rocmCoreLib   = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_core\bin"
+        $rocmDevelLib  = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_devel\bin"
+        $rocmDevelRoot = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_devel"
+
+        $env:PATH                          = "$binDir;$pythonDir;$pythonDir\Scripts;$rocmCustomLib;$rocmCoreLib;$rocmDevelLib;$env:PATH"
+        $env:TORCH_BLAS_PREFER_HIPBLASLT   = "1"
+        if (Test-Path -Path $rocmDevelRoot) {
+            $env:ROCM_PATH = $rocmDevelRoot
+            $env:HIP_PATH  = $rocmDevelRoot
+        }
         $env:PYTHONNOUSERSITE              = "1"
         $env:TEMP                          = $tmpDir
         $env:TMP                           = $tmpDir
@@ -1018,7 +1092,7 @@ function Invoke-Main {
 
     # Handle -DryRun
     if ($IsDryRun) {
-        Invoke-DryRun -Config $config -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:(-not $SkipVision) -IncludeAudio:(-not $SkipAudio)
+        Invoke-DryRun -Config $config -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:(-not $SkipVision) -IncludeAudio:(-not $SkipAudio) -IncludeTriton:$IncludeTriton
         return
     }
 
@@ -1028,6 +1102,7 @@ function Invoke-Main {
     $compList = @("torch")
     if ($includeVision) { $compList += "torchvision" }
     if ($includeAudio) { $compList += "torchaudio" }
+    if ($IncludeTriton) { $compList += "triton-windows" }
 
     if (-not $Unattended) {
         Write-Host "================== INSTALLATION PLAN ==================" -ForegroundColor Cyan
@@ -1119,7 +1194,17 @@ function Invoke-Main {
         }
 
         # Set process-scoped isolated environment
-        $env:PATH                    = "$pythonDir;$pythonDir\Scripts;$env:PATH"
+        $rocmCustomLib = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_libraries_custom\bin"
+        $rocmCoreLib   = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_core\bin"
+        $rocmDevelLib  = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_devel\bin"
+        $rocmDevelRoot = Join-Path $resolvedInstallDir "python\Lib\site-packages\_rocm_sdk_devel"
+
+        $env:PATH                    = "$pythonDir;$pythonDir\Scripts;$rocmCustomLib;$rocmCoreLib;$rocmDevelLib;$env:PATH"
+        $env:TORCH_BLAS_PREFER_HIPBLASLT = "1"
+        if (Test-Path -Path $rocmDevelRoot) {
+            $env:ROCM_PATH = $rocmDevelRoot
+            $env:HIP_PATH  = $rocmDevelRoot
+        }
         $env:PYTHONNOUSERSITE        = "1"
         $env:TEMP                    = $tmpDir
         $env:TMP                     = $tmpDir
@@ -1152,6 +1237,11 @@ function Invoke-Main {
 
         # Step 4b: PyTorch
         Install-Torch -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:$includeVision -IncludeAudio:$includeAudio -State $existingState
+
+        # Step 4c: Triton (optional)
+        if ($IncludeTriton) {
+            Install-Triton -TargetDir $resolvedInstallDir
+        }
 
         # Step 5: Launchers into bin/
         Write-Launchers -TemplateDir $templateDir -TargetDir $resolvedInstallDir
@@ -1206,6 +1296,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             -SelectedRelease $RocmRelease `
             -SkipVision:$NoVision `
             -SkipAudio:$NoAudio `
+            -IncludeTriton:$WithTriton `
             -ForceReinstall:$Reinstall `
             -SkipGpu:$SkipGpuCheck `
             -NoVerification:$SkipVerify `

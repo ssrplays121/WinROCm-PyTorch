@@ -12,9 +12,16 @@ if (Test-Path -Path (Join-Path $scriptDir "..\python\python.exe")) {
     $installDir = (Resolve-Path $scriptDir).Path
 }
 
-# Idempotently update PATH
+# Idempotently update PATH with strict DLL search precedence (ROCm/TheRock#5447)
 $existingPaths = $env:PATH -split ';'
-$rocmPaths = @("$installDir\bin", "$installDir\python", "$installDir\python\Scripts")
+$rocmPaths = @(
+    "$installDir\bin",
+    "$installDir\python",
+    "$installDir\python\Scripts",
+    "$installDir\python\Lib\site-packages\_rocm_sdk_libraries_custom\bin",
+    "$installDir\python\Lib\site-packages\_rocm_sdk_core\bin",
+    "$installDir\python\Lib\site-packages\_rocm_sdk_devel\bin"
+)
 $newPaths = @()
 foreach ($p in $rocmPaths) {
     if ($existingPaths -notcontains $p) {
@@ -24,6 +31,20 @@ foreach ($p in $rocmPaths) {
 if ($newPaths.Count -gt 0) {
     $env:PATH = ($newPaths -join ';') + ';' + $env:PATH
 }
+
+$env:TORCH_BLAS_PREFER_HIPBLASLT = "1"
+$rocmDevel = "$installDir\python\Lib\site-packages\_rocm_sdk_devel"
+if (Test-Path -Path $rocmDevel) {
+    $env:ROCM_PATH = $rocmDevel
+    $env:HIP_PATH = $rocmDevel
+}
+
+# Optional TunableOp auto-tuning configuration
+# $env:PYTORCH_TUNABLEOP_ENABLED = "1"
+# $env:PYTORCH_TUNABLEOP_FILENAME = "$installDir\.cache\tunableop_results.csv"
+
+# Optional MIOpen bypass toggle (uncomment if experiencing Conv2d workspace=0 slowdowns #3077)
+# $env:ROCM_DISABLE_MIOPEN = "1"
 
 $env:PYTHONNOUSERSITE = "1"
 $env:TEMP = "$installDir\.tmp"
