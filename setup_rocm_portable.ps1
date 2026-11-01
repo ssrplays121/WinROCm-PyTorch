@@ -76,7 +76,7 @@ $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Import-Module Microsoft.PowerShell.Utility -ErrorAction SilentlyContinue
 
-$Script:Version = "0.2.0"
+$Script:Version = "0.2.1"
 
 # Custom Exception for mapped exit codes
 class SetupException : System.Exception {

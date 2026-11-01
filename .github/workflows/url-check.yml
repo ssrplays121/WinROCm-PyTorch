@@ -61,3 +61,20 @@ jobs:
 
           Write-Host "`nAll release URLs are verified and reachable." -ForegroundColor Green
 
+      - name: Verify dynamic checksums
+        shell: pwsh
+        run: |
+          $config = Import-PowerShellDataFile -Path .\config\releases.psd1
+          $tempFile = [System.IO.Path]::GetTempFileName()
+          try {
+              Invoke-WebRequest -Uri $config.GetPipUrl -OutFile $tempFile -UseBasicParsing
+              $actualSha = (Get-FileHash -Path $tempFile -Algorithm SHA256).Hash
+              if ($actualSha -ne $config.GetPipSha256) {
+                  Write-Error "get-pip.py SHA256 mismatch! Expected: $($config.GetPipSha256), Actual: $actualSha. Upstream has likely been updated."
+                  exit 1
+              }
+              Write-Host "get-pip.py SHA256 verified successfully." -ForegroundColor Green
+          } finally {
+              Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+          }
+
