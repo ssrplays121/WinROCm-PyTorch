@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-01
+
+### Added
+- **Linux Package Manager Workflow (`setup.bat update`)**: Added interactive upgrade detection and targeted updates modeled after `dnf`/`apt`. Synchronizes remote repository catalogs from GitHub, compares installed packages against candidates, renders a formatted package status diff table, and prompts the user for confirmation.
+- **Strictly Read-Only Check Mode (`setup.bat check-update`)**: Non-destructive preview comparing installed packages against upstream candidates without modifying any files on disk.
+- **Unified Front-End CLI (`setup.bat`)**: Redesigned `setup.bat` into an explicit command router supporting `install`, `update`, `check-update`, `status`, `verify`, `reinstall`, and `diagnose`. Running `setup.bat` alone displays available commands and guidance rather than initiating an unprompted install.
+- **Synchronized SDK Metapackage Upgrades**: Updates both binary `.whl` files and the top-level AMD `rocm` metapackage (`rocm-*.tar.gz`) in unison to maintain strict dependency integrity.
+- **Linux-Style Option Parity**: Added `-y` as a direct alias for `-Yes` for unattended, non-interactive script updates (`setup.bat update -y`).
+- **Global `rocm` System Command**: Introduced `bin/rocm.bat` mirroring `setup.bat` syntax, enabling users to run `rocm update`, `rocm status`, `rocm check-update`, `rocm verify`, `rocm run`, and `rocm pip` from any terminal or folder once added to User PATH.
+- **Dedicated Shortcut Launchers**: Added `update_rocm.bat`, `status_rocm.bat`, and `verify_rocm.bat` inside `bin/` for single-word command execution.
+- **Modular Scripts Architecture**: Separated package manager logic into `scripts/update.ps1` and environment inspection into `scripts/status.ps1`.
+- **Fast Pure-Python Metadata Probing**: Switched version detection to `importlib.metadata.version` to query package versions instantly without triggering GPU runtime initialization or `offload-arch` stderr messages.
+- **PEP 503 Constraint Normalization**: Normalized distribution names in `constraints-rocm.txt` to ensure consistent package locking across all dependency tools.
+
 ## [0.2.1] - 2026-11-01
 
 ### Fixed

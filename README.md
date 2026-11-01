@@ -60,21 +60,40 @@ We recommend installing into a short path (such as `C:\rocm`) to avoid Windows `
    git clone https://github.com/ssrplays121/WinROCm-PyTorch.git C:\rocm
    cd /d C:\rocm
    ```
-3. Run the setup bootstrapper:
+3. Run the installer:
    ```cmd
-   setup.bat
+   setup.bat install
    ```
-   *(For automated scripts or CI environments, pass `-Yes` to run unattended: `setup.bat -Yes`)*.
+   *(For automated scripts or CI environments, pass `-y` to run unattended: `setup.bat install -y`)*.
 
 ### 2. Verify Hardware Acceleration
 
-Run the included verification probe to confirm GPU detection and test matrix multiplication:
+Run the verification probe to confirm GPU detection and test matrix multiplication:
 
 ```cmd
-run_rocm bin\verify_rocm.py
+setup.bat verify
 ```
+*(Or use `run_rocm bin\verify_rocm.py`)*.
 
 If successful, you will see your AMD Radeon GPU identified with ROCm acceleration active.
+
+---
+
+## Package Manager & CLI Reference
+
+WinROCm-PyTorch features a Linux package manager-style CLI (`dnf`/`apt` workflow). You can run commands locally via `setup.bat` or globally via `rocm` once added to your PATH:
+
+| Command | Linux Equivalent | Description |
+|---|---|---|
+| `setup.bat install` | `dnf install` | Install isolated Python, ROCm SDK, and PyTorch environment. |
+| `setup.bat status` | `dnf info` | Fast inspection of installed package versions and detected AMD GPU. |
+| `setup.bat check-update` | `dnf check-update` | Preview available candidate updates from upstream without writing. |
+| `setup.bat update` | `dnf update` / `apt upgrade` | Interactively inspect package diffs and prompt to upgrade. |
+| `setup.bat update -y` | `dnf update -y` | Non-interactive unattended upgrade of all outdated packages. |
+| `setup.bat verify` | — | Run hardware verification suite (GEMM, Conv2d, BatchNorm, Triton). |
+| `setup.bat reinstall` | `dnf reinstall` | Wipe existing environment and perform a fresh install. |
+| `setup.bat diagnose` | — | Generate `diagnose.txt` system telemetry report. |
+| `setup.bat help` | `dnf --help` | Display command usage and available options. |
 
 ---
 
@@ -84,15 +103,17 @@ WinROCm-PyTorch isolates all executables within dedicated launcher wrappers insi
 
 | Command | Description | Example |
 |---|---|---|
+| `rocm <command>` | Unified global CLI matching `setup.bat` from ANY folder | `rocm update -y` |
 | `run_rocm <script.py>` | Run any Python script using the ROCm environment | `run_rocm my_model.py` |
 | `pip_rocm install <pkg>` | Install packages safely with constraint protection | `pip_rocm install diffusers` |
 | `shell_rocm` | Open an interactive command prompt bound to this environment | `shell_rocm` |
 | `torchrun_rocm` | Execute distributed / multi-process scripts | `torchrun_rocm train.py` |
+| `update_rocm` | Direct shortcut to check and apply updates | `update_rocm` |
 | `. .\bin\env_rocm.ps1` | Activate the ROCm environment in an existing PowerShell session | `. .\bin\env_rocm.ps1` |
 
 ### Optional: Global Access via Windows User PATH
 
-You can make `run_rocm`, `pip_rocm`, and `shell_rocm` callable from **any directory or terminal** without typing full paths:
+You can make `rocm`, `run_rocm`, `pip_rocm`, and `update_rocm` callable from **any directory or terminal** without typing full paths:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\add_to_path.ps1
@@ -239,7 +260,20 @@ You can customize the installer by passing parameters to `setup.bat` or `setup_r
    Open `diagnose.txt` to review the system probe details.
 
 ### Upgrades and Updates
-To update installed packages, use `pip_rocm install -U <package>`. The built-in constraints file will ensure PyTorch remains locked to AMD's ROCm build. To upgrade the underlying ROCm release, run setup with `-Reinstall -RocmRelease 7.2.1`.
+WinROCm-PyTorch follows a Linux package manager update workflow:
+- Preview updates without modifying anything:
+  ```cmd
+  setup.bat check-update       (or: rocm check-update)
+  ```
+- Interactively inspect candidate version diffs and update:
+  ```cmd
+  setup.bat update             (or: rocm update)
+  ```
+- Unattended upgrade in CI or automation:
+  ```cmd
+  setup.bat update -y          (or: rocm update -y)
+  ```
+To update specific Python packages while keeping ROCm locked, use `pip_rocm install -U <package>`. The built-in constraints file (`constraints-rocm.txt`) ensures PyTorch remains strictly pinned to AMD's ROCm wheels.
 
 ### How do I uninstall?
 Because WinROCm-PyTorch does not touch the Windows Registry or system files, uninstalling is as simple as deleting the installation folder. If you registered the `bin/` directory to your user PATH, run `powershell -ExecutionPolicy Bypass -File .\scripts\remove_from_path.ps1` before deleting the folder.

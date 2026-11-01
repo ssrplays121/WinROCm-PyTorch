@@ -106,7 +106,11 @@ Describe "ROCm Portable - Templates" {
             "torchrun_rocm.bat",
             "env_rocm.ps1",
             "verify_rocm.py",
-            "sitecustomize.py"
+            "sitecustomize.py",
+            "rocm.bat",
+            "update_rocm.bat",
+            "status_rocm.bat",
+            "verify_rocm.bat"
         )
         foreach ($tmpl in $expectedTemplates) {
             $tmplPath = Join-Path $script:templateDir $tmpl
@@ -329,6 +333,91 @@ Describe "ROCm Portable - Bootstrapper and PATH Management" {
         New-Item -ItemType Directory -Force -Path $testDir | Out-Null
         $addScript = Join-Path $script:repoRoot "scripts\add_to_path.ps1"
         { & $addScript -InstallDir $testDir } | Should -Throw
+    }
+}
+
+Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
+    It "setup.bat without arguments displays guidance to run setup.bat -Help" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        $output = cmd.exe /c "$setupBat"
+        $text = ($output -join "`n")
+        $text | Should -Match "Run 'setup\.bat -Help'"
+        $text | Should -Match "Quick Commands:"
+        $text | Should -Match "setup\.bat update"
+    }
+
+    It "setup.bat help displays full command reference" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        $output = cmd.exe /c "$setupBat help"
+        $text = ($output -join "`n")
+        $text | Should -Match "WinROCm-PyTorch Command Line Reference"
+        $text | Should -Match "check-update"
+        $text | Should -Match "-WithTriton"
+    }
+
+    It "scripts/status.ps1 runs and reports environment details" {
+        $statusScript = Join-Path $script:repoRoot "scripts\status.ps1"
+        (Test-Path -Path $statusScript) | Should -Be $true
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $statusScript -InstallDir $script:repoRoot
+        $text = ($output -join "`n")
+        $text | Should -Match "WINROCM STATUS"
+        $text | Should -Match "Install Directory"
+    }
+
+    It "scripts/update.ps1 -CheckOnly generates preview diff table without writing" {
+        $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
+        (Test-Path -Path $updateScript) | Should -Be $true
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -InstallDir $script:repoRoot -CheckOnly
+        $text = ($output -join "`n")
+        $text | Should -Match "WINROCM PACKAGE MANAGER"
+        $text | Should -Match "Package Status"
+    }
+
+    It "setup.bat with an unknown command exits with code 1 and error message" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        $output = cmd.exe /c "$setupBat invalid_cmd 2>&1"
+        $LASTEXITCODE | Should -Be 1
+        $text = ($output -join "`n")
+        $text | Should -Match "\[ERROR\] Unknown command 'invalid_cmd'"
+        $text | Should -Match "setup\.bat -Help"
+    }
+
+    It "scripts/update.ps1 -CheckOnly tracks rocm metapackage in diff items" {
+        $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -InstallDir $script:repoRoot -CheckOnly
+        $text = ($output -join "`n")
+        $text | Should -Match "rocm\s+7\.2"
+    }
+
+    It "scripts/update.ps1 -CheckOnly is strictly read-only and does not modify config/releases.psd1" {
+        $configPath = Join-Path $script:repoRoot "config\releases.psd1"
+        $origWriteTime = (Get-Item $configPath).LastWriteTimeUtc
+        $origContent = Get-Content -Path $configPath -Raw
+
+        $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -InstallDir $script:repoRoot -CheckOnly | Out-Null
+
+        $afterWriteTime = (Get-Item $configPath).LastWriteTimeUtc
+        $afterContent = Get-Content -Path $configPath -Raw
+
+        $afterWriteTime | Should -Be $origWriteTime
+        $afterContent | Should -Be $origContent
+    }
+
+    It "bin/rocm.bat exists and mirrors CLI command routing" {
+        $rocmBat = Join-Path $script:repoRoot "bin\rocm.bat"
+        (Test-Path -Path $rocmBat) | Should -Be $true
+        $output = cmd.exe /c "$rocmBat"
+        $text = ($output -join "`n")
+        $text | Should -Match "WinROCm-PyTorch"
+        $text | Should -Match "rocm status"
+        $text | Should -Match "rocm update"
+    }
+
+    It "Dedicated shortcuts update_rocm.bat, status_rocm.bat, and verify_rocm.bat exist" {
+        (Test-Path -Path (Join-Path $script:repoRoot "bin\update_rocm.bat")) | Should -Be $true
+        (Test-Path -Path (Join-Path $script:repoRoot "bin\status_rocm.bat")) | Should -Be $true
+        (Test-Path -Path (Join-Path $script:repoRoot "bin\verify_rocm.bat")) | Should -Be $true
     }
 }
 

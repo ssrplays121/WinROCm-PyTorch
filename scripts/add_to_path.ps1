@@ -45,9 +45,13 @@ $newPathString = $newPaths -join ';'
 Write-Host "Successfully added WinROCm-PyTorch to your Windows User PATH:" -ForegroundColor Green
 Write-Host "  + $binDir" -ForegroundColor Cyan
 Write-Host "`nYou can now run the following commands from ANY terminal or directory:" -ForegroundColor Green
-Write-Host "  - run_rocm script.py" -ForegroundColor Gray
-Write-Host "  - pip_rocm install <package>" -ForegroundColor Gray
-Write-Host "  - torchrun_rocm --nproc_per_node=1 train.py" -ForegroundColor Gray
-Write-Host "  - shell_rocm" -ForegroundColor Gray
+Write-Host "  - rocm update [-y]         (Package manager: check & upgrade)" -ForegroundColor Gray
+Write-Host "  - rocm status              (Inspect installation & GPU hardware)" -ForegroundColor Gray
+Write-Host "  - rocm check-update        (Preview available updates)" -ForegroundColor Gray
+Write-Host "  - rocm verify              (Run GPU verification tests)" -ForegroundColor Gray
+Write-Host "  - rocm shell               (Launch isolated ROCm terminal)" -ForegroundColor Gray
+Write-Host "  - rocm run script.py       (Execute Python script with ROCm)" -ForegroundColor Gray
+Write-Host "  - rocm pip install <pkg>   (Install packages with constraint safety)" -ForegroundColor Gray
+Write-Host "  - update_rocm              (Direct shortcut to check & update)" -ForegroundColor Gray
 Write-Host "`nNote: Please restart any open terminal windows for the PATH changes to take effect." -ForegroundColor Yellow
 

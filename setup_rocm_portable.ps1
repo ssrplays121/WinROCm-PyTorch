@@ -57,6 +57,7 @@
 param(
     [string]$InstallDir = $PSScriptRoot,
     [string]$RocmRelease,
+    [switch]$Install,
     [switch]$NoVision,
     [switch]$NoAudio,
     [switch]$WithTriton,
@@ -65,6 +66,7 @@ param(
     [switch]$SkipVerify,
     [switch]$DryRun,
     [switch]$Diagnose,
+    [Alias("y")]
     [switch]$Yes
 )
 
@@ -76,7 +78,7 @@ $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Import-Module Microsoft.PowerShell.Utility -ErrorAction SilentlyContinue
 
-$Script:Version = "0.2.1"
+$Script:Version = "0.3.0"
 
 # Custom Exception for mapped exit codes
 class SetupException : System.Exception {
@@ -777,7 +779,7 @@ function Write-Launchers {
         New-Item -ItemType Directory -Force -Path $binDir | Out-Null
     }
 
-    $launcherFiles = @("env_rocm.bat", "run_rocm.bat", "pip_rocm.bat", "shell_rocm.bat", "torchrun_rocm.bat", "env_rocm.ps1")
+    $launcherFiles = @("env_rocm.bat", "run_rocm.bat", "pip_rocm.bat", "shell_rocm.bat", "torchrun_rocm.bat", "env_rocm.ps1", "rocm.bat", "update_rocm.bat", "status_rocm.bat", "verify_rocm.bat")
 
     foreach ($f in $launcherFiles) {
         $src = Join-Path $TemplateDir $f
@@ -1249,11 +1251,11 @@ function Invoke-Main {
         # Step 6: Constraints
         Write-Constraints -TargetDir $resolvedInstallDir
 
-        # Get installed torch version for state record
+        # Get installed torch version for state record (using fast metadata check to avoid GPU warnings)
         $pythonExe = Join-Path $pythonDir "python.exe"
         $installedTorchVer = ""
         try {
-            $installedTorchVer = (& $pythonExe -c "import torch; print(torch.__version__)").Trim()
+            $installedTorchVer = (& $pythonExe -c "import importlib.metadata; print(importlib.metadata.version('torch'))").Trim()
         } catch {
             $null = $_
         }
