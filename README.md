@@ -81,34 +81,73 @@ If successful, you will see your AMD Radeon GPU identified with ROCm acceleratio
 
 ## Package Manager & CLI Reference
 
-WinROCm-PyTorch features a full Linux package manager-style CLI (`dnf`/`apt` workflow) with interactive menus, dedicated submenus, and individual command help.
+WinROCm-PyTorch features a full Linux package manager-style CLI (`dnf`/`apt` workflow) with an interactive menu, dedicated subcommand help, and Triton integration.
 
-When double-clicked or opened without parameters, `setup.bat` presents an interactive window of options to choose from. You can also run commands locally via `setup.bat` or globally via `rocm` once added to your PATH:
+### Interactive Action Menu (`0 to abort`)
 
-| Command | Linux Equivalent | Description |
-|---|---|---|
-| `setup.bat` | — | Interactive window of options: Main menu & submenus for install, update, reinstall, etc. |
-| `setup.bat install` | `dnf install` | Install isolated Python, ROCm SDK, and PyTorch environment. |
-| `setup.bat status` | `dnf info` | Fast inspection of installed package versions and detected AMD GPU. |
-| `setup.bat check-update` | `dnf check-update` | Preview available candidate updates from upstream without writing. |
-| `setup.bat update` | `dnf update` / `apt upgrade` | Interactively inspect package diffs and prompt to upgrade. |
-| `setup.bat update -y` | `dnf update -y` | Non-interactive unattended upgrade of all outdated packages. |
-| `setup.bat verify` | — | Run hardware verification suite (GEMM, Conv2d, BatchNorm, Triton). |
-| `setup.bat reinstall` | `dnf reinstall` | Wipe existing environment and perform a fresh install. |
-| `setup.bat diagnose` | — | Generate `diagnose.txt` system telemetry report. |
-| `setup.bat help [cmd]` | `dnf help <cmd>` | Display command usage or detailed individual help for any command. |
+When double-clicked or opened without arguments, `setup.bat` (and `rocm` once installed to PATH) launches a persistent interactive action menu:
+- Displays current environment status and live Triton acceleration status.
+- Prompts cleanly: `Enter action [0-9] (0 to abort): `.
+- **Keep-Active Safeguard**: The console window stays open and active. Pressing Enter without typing will never close the window unexpectedly—it displays a reminder and prompts again.
+- Entering `0` (or `q`, `abort`, `exit`) safely closes the menu.
+- Non-interactive pipes and CI automation (`setup.bat <nul`) exit cleanly with code `0`.
 
-### Individual Help Options
-Every command and submenu features its own individual help:
+| Action | Command | Linux Equivalent | Description |
+|---|---|---|---|
+| `[1]` | `setup.bat install` | `dnf install` | Install isolated Python, ROCm SDK, and PyTorch environment. |
+| `[2]` | `setup.bat update` | `dnf update` / `apt upgrade` | Interactively inspect package diffs and prompt to upgrade. |
+| `[3]` | `setup.bat check-update` | `dnf check-update` | Preview available candidate updates from upstream without writing. |
+| `[4]` | `setup.bat status` | `dnf info` | Fast inspection of installed package versions and detected AMD GPU. |
+| `[5]` | `setup.bat verify` | — | Run hardware verification suite (GEMM, Conv2d, BatchNorm, Triton). |
+| `[6]` | `setup.bat reinstall` | `dnf reinstall` | Wipe existing environment and perform a fresh install. |
+| `[7]` | `setup.bat diagnose` | — | Generate `diagnose.txt` system telemetry report. |
+| `[8]` | `setup.bat triton` | — | View Triton guide, requirements, and 1-click install `triton-windows`. |
+| `[9]` | `setup.bat help` | `dnf help` | Display full command-line reference and available flags. |
+| `[0]` | `setup.bat` (choose 0) | — | Abort and close the interactive menu. |
+
+### Dedicated Subcommand Help
+Every command features its own detailed individual help screen accessible via prefix or flag:
 ```cmd
-setup.bat help install      # (or: setup.bat install --help)
+setup.bat help install      # (or: setup.bat install --help / -h)
 setup.bat help update       # (or: setup.bat update --help)
 setup.bat help check-update # (or: setup.bat check-update -h)
 setup.bat help status       # (or: setup.bat status -h)
-setup.bat help reinstall    # (or: setup.bat reinstall --help)
 setup.bat help verify       # (or: setup.bat verify --help)
+setup.bat help reinstall    # (or: setup.bat reinstall --help)
 setup.bat help diagnose     # (or: setup.bat diagnose --help)
+setup.bat help triton       # (or: setup.bat triton / rocm triton)
 ```
+
+---
+
+## Triton & torch.compile Acceleration
+
+PyTorch 2.0+ introduces `torch.compile()`, a compiler that fuses GPU operations into optimized GPU kernels on the fly. On AMD ROCm, Triton is the default compilation backend.
+
+### What is Triton?
+- **Triton** is an open-source language and compiler for writing highly efficient GPU kernels.
+- When calling `torch.compile(model)` in frameworks like **ComfyUI**, **Stable Diffusion**, or **LLM inference**, PyTorch delegates kernel generation directly to Triton.
+- Without Triton installed on Windows, calling `torch.compile()` will fail with an error stating that Triton is not available.
+
+### Do You Need It?
+- **NO** if you only run standard PyTorch models in standard execution ("eager mode", default).
+- **YES** if you want 15% to 50%+ faster inference/training by taking advantage of `torch.compile` in ComfyUI, Diffusers, or transformers.
+
+### System Requirements for Triton
+1. **AMD GPU**: RDNA3 (Radeon RX 7000 series) or RDNA4 (Radeon RX 9000 series).
+2. **Microsoft Visual Studio 2022 or Build Tools**: Must have the **Desktop development with C++** workload installed (provides the MSVC C++ compiler `cl.exe` required by Triton for runtime JIT compilation).
+
+### How to Install Triton
+- **During Initial Installation**: Run `setup.bat install -WithTriton` (or choose `[Y]` when prompted in the interactive menu).
+- **Existing Installation (1-Click Upgrade)**: If WinROCm is already installed without Triton, launch `setup.bat`, select `[1] Install` or `[8] Triton Info`, and accept the prompt to install Triton. Or run:
+  ```cmd
+  setup.bat update -WithTriton
+  ```
+- **Via Isolated Pip**:
+  ```cmd
+  bin\pip_rocm.bat install triton-windows
+  ```
+- **Verification**: Run `setup.bat verify` to execute the hardware validation suite, which includes a Triton JIT compile and matrix test when installed.
 
 ---
 

@@ -98,15 +98,6 @@ if /i "%CMD%"=="-reinstall" (
     goto do_reinstall
 )
 
-if /i "%CMD%"=="install" (
-    if "!IS_HELP_REQ!"=="1" goto help_install
-    goto do_install
-)
-if /i "%CMD%"=="-install" (
-    if "!IS_HELP_REQ!"=="1" goto help_install
-    goto do_install
-)
-
 if /i "%CMD%"=="diagnose" (
     if "!IS_HELP_REQ!"=="1" goto help_diagnose
     goto do_diagnose
@@ -116,6 +107,10 @@ if /i "%CMD%"=="-diagnose" (
     goto do_diagnose
 )
 
+if /i "%CMD%"=="shell" (
+    if "!IS_HELP_REQ!"=="1" goto help_shell
+    goto do_shell
+)
 if /i "%CMD%"=="run" (
     if "!IS_HELP_REQ!"=="1" goto help_run
     goto do_run
@@ -124,10 +119,18 @@ if /i "%CMD%"=="pip" (
     if "!IS_HELP_REQ!"=="1" goto help_pip
     goto do_pip
 )
-if /i "%CMD%"=="shell" (
-    if "!IS_HELP_REQ!"=="1" goto help_shell
-    goto do_shell
+if /i "%CMD%"=="install" (
+    if "!IS_HELP_REQ!"=="1" goto help_install
+    goto do_install
 )
+if /i "%CMD%"=="-install" (
+    if "!IS_HELP_REQ!"=="1" goto help_install
+    goto do_install
+)
+
+if /i "%CMD%"=="triton" goto help_triton
+if /i "%CMD%"=="-triton" goto help_triton
+if /i "%CMD%"=="--triton" goto help_triton
 
 echo [ERROR] Unknown command '%CMD%'.
 echo Run 'rocm help' or 'rocm --help' to see available commands.
@@ -141,246 +144,14 @@ if /i "%SUB_CMD%"=="check-update" goto help_check_update
 if /i "%SUB_CMD%"=="check" goto help_check_update
 if /i "%SUB_CMD%"=="update" goto help_update
 if /i "%SUB_CMD%"=="verify" goto help_verify
-if /i "%SUB_CMD%"=="reinstall" goto help_reinstall
-if /i "%SUB_CMD%"=="install" goto help_install
-if /i "%SUB_CMD%"=="diagnose" goto help_diagnose
+if /i "%SUB_CMD%"=="shell" goto help_shell
 if /i "%SUB_CMD%"=="run" goto help_run
 if /i "%SUB_CMD%"=="pip" goto help_pip
-if /i "%SUB_CMD%"=="shell" goto help_shell
+if /i "%SUB_CMD%"=="install" goto help_install
+if /i "%SUB_CMD%"=="reinstall" goto help_reinstall
+if /i "%SUB_CMD%"=="diagnose" goto help_diagnose
+if /i "%SUB_CMD%"=="triton" goto help_triton
 goto show_help
-
-rem ============================================================================
-rem   Interactive Window of Options (Main Menu & Submenus)
-rem ============================================================================
-
-:interactive_menu
-cls 2>nul
-echo ================================================================================
-echo   WinROCm-PyTorch: System CLI ^& Package Manager
-echo ================================================================================
-echo   Install Directory : %ROCM_ROOT%
-if exist "%ROCM_ROOT%\.rocm-portable.json" (
-    echo   Environment Status: INSTALLED [active .rocm-portable.json found]
-) else (
-    echo   Environment Status: NOT INSTALLED
-)
-echo.
-echo   Package Manager Options:
-echo     1) Status        - View package versions, environment state, and GPU details
-echo     2) Check-Update  - Preview candidate updates without modifying files
-echo     3) Update        - Check for updates and interactively upgrade packages
-echo     4) Verify        - Run GPU validation tests (GEMM, Conv2d, BatchNorm)
-echo     5) Shell         - Launch interactive ROCm command prompt
-echo     6) Reinstall     - Wipe existing environment and perform a fresh install
-echo     7) Diagnose      - Collect diagnostic telemetry into diagnose.txt
-echo     8) Help          - Command line reference and individual command help
-echo     9) Exit
-echo ================================================================================
-set "MAIN_CHOICE="
-set /p "MAIN_CHOICE=Select an option [1-9] (default 9): "
-if not defined MAIN_CHOICE exit /b 0
-set "MAIN_CHOICE=!MAIN_CHOICE: =!"
-if "!MAIN_CHOICE!"=="" exit /b 0
-if "!MAIN_CHOICE!"=="9" exit /b 0
-if /i "!MAIN_CHOICE!"=="q" exit /b 0
-if /i "!MAIN_CHOICE!"=="exit" exit /b 0
-
-if "!MAIN_CHOICE!"=="1" (
-    echo.
-    call :do_status
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!MAIN_CHOICE!"=="2" (
-    echo.
-    call :do_check_update
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!MAIN_CHOICE!"=="3" goto submenu_update
-if "!MAIN_CHOICE!"=="4" (
-    echo.
-    call :do_verify
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!MAIN_CHOICE!"=="5" (
-    echo.
-    call :do_shell
-    goto interactive_menu
-)
-if "!MAIN_CHOICE!"=="6" goto submenu_reinstall
-if "!MAIN_CHOICE!"=="7" (
-    echo.
-    call :do_diagnose
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!MAIN_CHOICE!"=="8" goto submenu_help
-
-echo [ERROR] Invalid choice '!MAIN_CHOICE!'. Please select 1 through 9.
-ping -n 2 127.0.0.1 >nul 2>&1
-goto interactive_menu
-
-:submenu_update
-cls 2>nul
-echo ================================================================================
-echo   WinROCm: Package Manager Update Options
-echo ================================================================================
-echo.
-echo     1) Interactive Update (Check candidate diffs and prompt before upgrading)
-echo     2) Unattended Update (-y / non-interactive upgrade)
-echo     3) Check Updates (Preview candidate diff table without modifying files)
-echo     4) Update Help (View detailed package manager documentation)
-echo     5) Return to Main Menu
-echo ================================================================================
-set "UPD_CHOICE="
-set /p "UPD_CHOICE=Select update option [1-5] (default 5): "
-if not defined UPD_CHOICE goto interactive_menu
-set "UPD_CHOICE=!UPD_CHOICE: =!"
-if "!UPD_CHOICE!"=="" goto interactive_menu
-if "!UPD_CHOICE!"=="5" goto interactive_menu
-if /i "!UPD_CHOICE!"=="q" goto interactive_menu
-
-if "!UPD_CHOICE!"=="1" (
-    echo.
-    set "REST_ARGS="
-    call :do_update
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!UPD_CHOICE!"=="2" (
-    echo.
-    set "REST_ARGS=-Yes"
-    call :do_update
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!UPD_CHOICE!"=="3" (
-    echo.
-    set "REST_ARGS="
-    call :do_check_update
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!UPD_CHOICE!"=="4" (
-    echo.
-    call :help_update
-    echo.
-    echo Press any key to return to the update menu...
-    pause >nul
-    goto submenu_update
-)
-echo [ERROR] Invalid choice '!UPD_CHOICE!'.
-ping -n 2 127.0.0.1 >nul 2>&1
-goto submenu_update
-
-:submenu_reinstall
-cls 2>nul
-echo ================================================================================
-echo   WinROCm: Reinstall Environment
-echo ================================================================================
-echo   WARNING: Reinstall will wipe the existing .\python folder, state file,
-echo   and package locks, then perform a fresh installation from verified packages.
-echo.
-echo     1) Confirm and Reinstall (Standard)
-echo     2) Confirm and Reinstall with Triton
-echo     3) Reinstall Help (View detailed documentation)
-echo     4) Cancel and Return to Main Menu
-echo ================================================================================
-set "RE_CHOICE="
-set /p "RE_CHOICE=Select reinstall option [1-4] (default 4): "
-if not defined RE_CHOICE goto interactive_menu
-set "RE_CHOICE=!RE_CHOICE: =!"
-if "!RE_CHOICE!"=="" goto interactive_menu
-if "!RE_CHOICE!"=="4" goto interactive_menu
-if /i "!RE_CHOICE!"=="q" goto interactive_menu
-
-if "!RE_CHOICE!"=="1" (
-    echo.
-    set "REST_ARGS="
-    call :do_reinstall
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!RE_CHOICE!"=="2" (
-    echo.
-    set "REST_ARGS=-WithTriton"
-    call :do_reinstall
-    echo.
-    echo Press any key to return to the main menu...
-    pause >nul
-    goto interactive_menu
-)
-if "!RE_CHOICE!"=="3" (
-    echo.
-    call :help_reinstall
-    echo.
-    echo Press any key to return to the reinstall menu...
-    pause >nul
-    goto submenu_reinstall
-)
-echo [ERROR] Invalid choice '!RE_CHOICE!'.
-ping -n 2 127.0.0.1 >nul 2>&1
-goto submenu_reinstall
-
-:submenu_help
-cls 2>nul
-echo ================================================================================
-echo   WinROCm: Documentation ^& Command Help
-echo ================================================================================
-echo.
-echo     1) General Command Line Reference
-echo     2) Status Help
-echo     3) Check-Update Help
-echo     4) Update Help
-echo     5) Verify Help
-echo     6) Reinstall Help
-echo     7) Run / Pip / Shell Help
-echo     8) Diagnose Help
-echo     9) Return to Main Menu
-echo ================================================================================
-set "HLP_CHOICE="
-set /p "HLP_CHOICE=Select help topic [1-9] (default 9): "
-if not defined HLP_CHOICE goto interactive_menu
-set "HLP_CHOICE=!HLP_CHOICE: =!"
-if "!HLP_CHOICE!"=="" goto interactive_menu
-if "!HLP_CHOICE!"=="9" goto interactive_menu
-if /i "!HLP_CHOICE!"=="q" goto interactive_menu
-
-if "!HLP_CHOICE!"=="1" call :show_help
-if "!HLP_CHOICE!"=="2" call :help_status
-if "!HLP_CHOICE!"=="3" call :help_check_update
-if "!HLP_CHOICE!"=="4" call :help_update
-if "!HLP_CHOICE!"=="5" call :help_verify
-if "!HLP_CHOICE!"=="6" call :help_reinstall
-if "!HLP_CHOICE!"=="7" (
-    call :help_run
-    call :help_pip
-    call :help_shell
-)
-if "!HLP_CHOICE!"=="8" call :help_diagnose
-
-echo.
-echo Press any key to return to the help menu...
-pause >nul
-goto submenu_help
 
 rem ============================================================================
 rem   Individual Command Help Screens
@@ -388,38 +159,38 @@ rem ============================================================================
 
 :show_help
 echo ================================================================================
-echo   WinROCm-PyTorch Unified System CLI Reference
+echo   WinROCm System CLI Reference
 echo ================================================================================
 echo Usage:
 echo   rocm ^<command^> [options]
 echo   rocm help ^<command^>
 echo.
-echo Package Manager Commands:
+echo Commands:
 echo   status, info       Display current installation state, package versions, and GPU info
 echo   check-update       Preview available candidate updates without modifying files
 echo   update             Check for updated configs/wheels and interactively upgrade
 echo   verify             Run the verification test suite (verify_rocm.py)
-echo   reinstall          Wipe existing environment and perform a fresh clean install
-echo   install            Install isolated ROCm PyTorch environment
-echo   diagnose           Collect system diagnostic telemetry into diagnose.txt
-echo.
-echo Runtime Execution Commands:
 echo   shell              Launch an isolated CMD shell with ROCm environment active
 echo   run ^<script.py^>    Run a Python script inside the isolated ROCm container
 echo   pip ^<args^>         Run pip with constraints protection to prevent CUDA overwrites
+echo   install            Install isolated ROCm PyTorch environment
+echo   reinstall          Wipe existing environment and perform a fresh clean install
+echo   diagnose           Collect system diagnostic telemetry into diagnose.txt
+echo   triton             Display guide on Triton ^& torch.compile acceleration
 echo   help               Display this reference, or run 'rocm help ^<cmd^>' for topic help
 echo.
 echo Options:
 echo   -y, -Yes           Non-interactive unattended mode (auto-confirm prompts)
-echo   -WithTriton        Include triton-windows support
+echo   -WithTriton        Include triton-windows support for torch.compile
 echo   -NoVision          Skip torchvision package
 echo   -NoAudio           Skip torchaudio package
 echo.
 echo Individual Help:
 echo   Run 'rocm help ^<cmd^>' or 'rocm ^<cmd^> help' for detailed subcommand help.
 echo   Examples:
-echo     rocm help update
-echo     rocm reinstall --help
+echo     rocm help status
+echo     rocm update --help
+echo     rocm help triton
 echo ================================================================================
 exit /b 0
 
@@ -430,8 +201,6 @@ echo ===========================================================================
 echo Purpose:
 echo   Inspects and displays current environment state, installed package versions,
 echo   detected AMD display adapters, driver versions, and constraints locking status.
-echo   Uses pure-Python metadata probing (importlib.metadata) for sub-second execution
-echo   without slow GPU runtime initialization.
 echo.
 echo Usage:
 echo   rocm status
@@ -477,10 +246,6 @@ echo   -CheckOnly          Preview available updates without applying (same as c
 echo   -WithTriton         Ensure triton-windows is included during the upgrade.
 echo   -RocmRelease ^<ver^>  Target explicit ROCm release version track.
 echo   help, -h, --help    Display this help message.
-echo.
-echo Examples:
-echo   rocm update             (interactively review package diffs and confirm)
-echo   rocm update -y          (unattended, automated upgrade in CI/scripts)
 echo ================================================================================
 exit /b 0
 
@@ -504,28 +269,42 @@ echo   rocm verify
 echo ================================================================================
 exit /b 0
 
-:help_reinstall
+:help_shell
 echo ================================================================================
-echo   WinROCm Command Help: REINSTALL
+echo   WinROCm Command Help: SHELL
 echo ================================================================================
 echo Purpose:
-echo   Wipes the existing isolated 'python\' directory, state file (.rocm-portable.json),
-echo   and package constraints (constraints-rocm.txt), then performs a clean, fresh
-echo   installation from verified upstream packages (like 'dnf reinstall').
+echo   Launches an isolated interactive CMD shell with all ROCm environment variables,
+echo   PATH precedences, and compiler flags configured.
 echo.
 echo Usage:
-echo   rocm reinstall [options]
+echo   rocm shell
+echo ================================================================================
+exit /b 0
+
+:help_run
+echo ================================================================================
+echo   WinROCm Command Help: RUN
+echo ================================================================================
+echo Purpose:
+echo   Executes a Python script or command within the isolated ROCm container environment.
 echo.
-echo Options:
-echo   -WithTriton         Include triton-windows in the clean install.
-echo   -NoVision           Skip torchvision.
-echo   -NoAudio            Skip torchaudio.
-echo   -y, -Yes            Non-interactive unattended mode.
-echo   help, -h, --help    Display this help message.
+echo Usage:
+echo   rocm run ^<script.py^> [arguments...]
+echo ================================================================================
+exit /b 0
+
+:help_pip
+echo ================================================================================
+echo   WinROCm Command Help: PIP
+echo ================================================================================
+echo Purpose:
+echo   Executes pip within the isolated Python environment while enforcing
+echo   constraints-rocm.txt to prevent accidental CUDA package overwrites.
 echo.
-echo Examples:
-echo   rocm reinstall
-echo   rocm reinstall -WithTriton -y
+echo Usage:
+echo   rocm pip install ^<package^>
+echo   rocm pip list
 echo ================================================================================
 exit /b 0
 
@@ -553,6 +332,27 @@ echo   help, -h, --help    Display this help message.
 echo ================================================================================
 exit /b 0
 
+:help_reinstall
+echo ================================================================================
+echo   WinROCm Command Help: REINSTALL
+echo ================================================================================
+echo Purpose:
+echo   Wipes the existing isolated 'python\' directory, state file (.rocm-portable.json),
+echo   and package constraints (constraints-rocm.txt), then performs a clean, fresh
+echo   installation from verified upstream packages (like 'dnf reinstall').
+echo.
+echo Usage:
+echo   rocm reinstall [options]
+echo.
+echo Options:
+echo   -WithTriton         Include triton-windows in the clean install.
+echo   -NoVision           Skip torchvision.
+echo   -NoAudio            Skip torchaudio.
+echo   -y, -Yes            Non-interactive unattended mode.
+echo   help, -h, --help    Display this help message.
+echo ================================================================================
+exit /b 0
+
 :help_diagnose
 echo ================================================================================
 echo   WinROCm Command Help: DIAGNOSE
@@ -569,46 +369,237 @@ echo   rocm diagnose
 echo ================================================================================
 exit /b 0
 
-:help_run
+:help_triton
 echo ================================================================================
-echo   WinROCm Command Help: RUN
+echo   WinROCm Guide: TRITON ^& TORCH.COMPILE ACCELERATION
 echo ================================================================================
-echo Purpose:
-echo   Executes any Python script within the isolated WinROCm runtime environment.
-echo   Ensures AMD ROCm libraries, HIPBLASLt tuning, and isolated Python are active.
+echo What is Triton?
+echo   Triton is an open-source compiler language and backend for deep learning.
+echo   In PyTorch 2.0+, Triton is the default backend used by 'torch.compile()'
+echo   to fuse GPU operations and generate optimized GPU kernels on the fly.
 echo.
-echo Usage:
-echo   rocm run ^<script.py^> [arguments]
+echo Why use Triton?
+echo   - Speed: Yields 15%% to 50%%+ performance improvements in model inference and
+echo     training for modern architectures (ComfyUI, Stable Diffusion, LLMs).
+echo   - Without Triton, calling 'torch.compile(model)' will fail with an error
+echo     indicating that Triton is not installed on Windows.
+echo.
+echo Do you need it?
+echo   - NO if you only run standard PyTorch models in "eager mode" (default execution).
+echo   - YES if you plan to run workloads utilizing 'torch.compile' acceleration.
+echo.
+echo System Requirements:
+echo   - Microsoft Visual Studio 2022 or Build Tools with 'Desktop development with C++'
+echo     workload installed (for MSVC C++ runtime JIT compilation).
+echo   - Supported AMD GPU (RDNA3 / RDNA4 architecture, e.g. RX 7000 / 9000 series).
+echo.
+echo How to Install:
+echo   - During initial install : rocm install -WithTriton
+echo   - On existing install   : rocm update -WithTriton
+echo   - Clean reinstall        : rocm reinstall -WithTriton
+echo   - Via isolated pip       : rocm pip install triton-windows
+echo.
+echo Verification:
+echo   Run 'rocm verify' to run the verification suite, which includes a
+echo   Triton JIT test if Triton is installed.
 echo ================================================================================
 exit /b 0
 
-:help_pip
-echo ================================================================================
-echo   WinROCm Command Help: PIP
-echo ================================================================================
-echo Purpose:
-echo   Runs pip package manager within the isolated environment. Automatically enforces
-echo   'constraints-rocm.txt' to guarantee PyTorch cannot be accidentally overwritten
-echo   by upstream CUDA wheels.
-echo.
-echo Usage:
-echo   rocm pip install ^<package^>
-echo   rocm pip list
-echo ================================================================================
-exit /b 0
+rem ============================================================================
+rem   Interactive Action Menu
+rem ============================================================================
 
-:help_shell
+:interactive_menu
+set "EMPTY_COUNT=0"
+
+:menu_loop
+cls 2>nul
+set "HAS_INSTALL=0"
+set "HAS_TRITON=0"
+set "ENV_STATUS=NOT INSTALLED"
+set "TRITON_STATUS=NOT INSTALLED [torch.compile disabled]"
+if exist "%ROCM_ROOT%\.rocm-portable.json" (
+    set "HAS_INSTALL=1"
+    set "ENV_STATUS=INSTALLED [active .rocm-portable.json found]"
+)
+if exist "%ROCM_ROOT%\python\Lib\site-packages\triton" (
+    set "HAS_TRITON=1"
+    set "TRITON_STATUS=INSTALLED [torch.compile active]"
+)
+if exist "%ROCM_ROOT%\python\Lib\site-packages\triton_windows" (
+    set "HAS_TRITON=1"
+    set "TRITON_STATUS=INSTALLED [torch.compile active]"
+)
+for /d %%D in ("%ROCM_ROOT%\python\Lib\site-packages\triton_windows-*") do (
+    set "HAS_TRITON=1"
+    set "TRITON_STATUS=INSTALLED [torch.compile active]"
+)
+
 echo ================================================================================
-echo   WinROCm Command Help: SHELL
+echo   WinROCm-PyTorch: System CLI ^& Package Manager
 echo ================================================================================
-echo Purpose:
-echo   Launches an interactive Command Prompt session pre-configured with all WinROCm
-echo   environment variables, library paths, and compiler discovery shims.
+echo   Install Directory : %ROCM_ROOT%
+echo   Environment Status: !ENV_STATUS!
+echo   Triton Support    : !TRITON_STATUS!
 echo.
-echo Usage:
-echo   rocm shell
+echo   Select an action to perform:
+echo     [1] Status        - Display installation state, package versions, and GPU info
+echo     [2] Check-Update  - Preview candidate updates without modifying files
+echo     [3] Update        - Check for updates and interactively upgrade packages
+echo     [4] Verify        - Run hardware validation tests (GEMM, Conv2d, BatchNorm)
+echo     [5] Shell         - Launch interactive isolated ROCm environment shell
+echo     [6] Reinstall     - Wipe existing environment and perform a fresh clean install
+echo     [7] Diagnose      - Collect diagnostic telemetry into diagnose.txt
+echo     [8] Triton Info   - What is Triton, torch.compile, and do you need it?
+echo     [9] Help          - Display command-line reference ^& documentation
+echo     [0] Abort / Exit
 echo ================================================================================
-exit /b 0
+set "ACTION="
+set /p "ACTION=Enter action [0-9] (0 to abort): "
+
+if not defined ACTION (
+    set /a EMPTY_COUNT+=1
+    if !EMPTY_COUNT! geq 2 (
+        echo [INFO] Exiting.
+        exit /b 0
+    )
+    echo [INFO] No action selected. Enter 0 to abort, or 1 through 9.
+    ping -n 2 127.0.0.1 >nul 2>&1
+    goto menu_loop
+)
+set "EMPTY_COUNT=0"
+set "ACTION=!ACTION: =!"
+
+if "!ACTION!"=="0" (
+    echo [INFO] Aborted by user.
+    exit /b 0
+)
+if /i "!ACTION!"=="q" exit /b 0
+if /i "!ACTION!"=="abort" exit /b 0
+if /i "!ACTION!"=="exit" exit /b 0
+
+if "!ACTION!"=="1" goto menu_action_status
+if "!ACTION!"=="2" goto menu_action_check_update
+if "!ACTION!"=="3" goto menu_action_update
+if "!ACTION!"=="4" goto menu_action_verify
+if "!ACTION!"=="5" goto menu_action_shell
+if "!ACTION!"=="6" goto menu_action_reinstall
+if "!ACTION!"=="7" goto menu_action_diagnose
+if "!ACTION!"=="8" goto menu_action_triton
+if "!ACTION!"=="9" goto menu_action_help
+
+echo [ERROR] Invalid choice '!ACTION!'. Please select 0 through 9.
+ping -n 2 127.0.0.1 >nul 2>&1
+goto menu_loop
+
+:menu_action_status
+echo.
+set "REST_ARGS="
+call :do_status
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_check_update
+echo.
+set "REST_ARGS="
+call :do_check_update
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_update
+echo.
+set "REST_ARGS="
+call :do_update
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_verify
+echo.
+set "REST_ARGS="
+call :do_verify
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_shell
+call :do_shell
+goto menu_loop
+
+:menu_action_reinstall
+echo.
+echo ================================================================================
+echo   WinROCm-PyTorch: Reinstall Environment
+echo ================================================================================
+echo   WARNING: Reinstall will wipe the existing .\python folder, state file,
+echo   and package locks, then perform a fresh installation from verified packages.
+echo ================================================================================
+set "CONFIRM_RE="
+set /p "CONFIRM_RE=Are you sure you want to wipe and perform a clean reinstall? [y/N]: "
+if /i not "!CONFIRM_RE!"=="y" (
+    echo [INFO] Reinstall cancelled.
+    echo.
+    echo Press any key to return to the main menu...
+    pause >nul
+    goto menu_loop
+)
+
+echo.
+set "WANT_TRITON_RE="
+set /p "WANT_TRITON_RE=Include Triton (triton-windows) in the clean reinstall? [y/N]: "
+set "REST_ARGS="
+if /i "!WANT_TRITON_RE!"=="y" set "REST_ARGS=-WithTriton"
+echo.
+call :do_reinstall
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_diagnose
+echo.
+set "REST_ARGS="
+call :do_diagnose
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_triton
+echo.
+call :help_triton
+if "!HAS_INSTALL!"=="0" goto menu_action_triton_done
+if "!HAS_TRITON!"=="1" goto menu_action_triton_done
+
+echo.
+echo --------------------------------------------------------------------------------
+set "INSTALL_TRITON_NOW="
+set /p "INSTALL_TRITON_NOW=Would you like to install Triton (triton-windows) now? [y/N]: "
+if /i "!INSTALL_TRITON_NOW!"=="y" (
+    echo.
+    set "REST_ARGS=-WithTriton"
+    call :do_update
+)
+
+:menu_action_triton_done
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
+
+:menu_action_help
+echo.
+call :show_help
+echo.
+echo Press any key to return to the main menu...
+pause >nul
+goto menu_loop
 
 rem ============================================================================
 rem   Execution Dispatchers

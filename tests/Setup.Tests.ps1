@@ -337,43 +337,39 @@ Describe "ROCm Portable - Bootstrapper and PATH Management" {
 }
 
 Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
-    It "setup.bat without arguments presents interactive window of options and exits cleanly on option 9" {
+    It "setup.bat without arguments presents interactive action menu and exits cleanly on option 0" {
         $setupBat = Join-Path $script:repoRoot "setup.bat"
-        $output = cmd.exe /c "echo 9 | $setupBat"
+        $output = cmd.exe /c "echo 0 | $setupBat"
         $text = ($output -join "`n")
         $text | Should -Match "WinROCm-PyTorch: Portable AMD ROCm PyTorch Environment & Package Manager"
-        $text | Should -Match "Package Manager Options:"
-        $text | Should -Match "1\)\s+Install"
-        $text | Should -Match "2\)\s+Update"
-        $text | Should -Match "3\)\s+Check-Update"
-        $text | Should -Match "4\)\s+Status"
-        $text | Should -Match "5\)\s+Verify"
-        $text | Should -Match "6\)\s+Reinstall"
-        $text | Should -Match "7\)\s+Diagnose"
-        $text | Should -Match "8\)\s+Help"
-        $text | Should -Match "9\)\s+Exit"
+        $text | Should -Match "Select an action to perform:"
+        $text | Should -Match "\[1\]\s+Install"
+        $text | Should -Match "\[2\]\s+Update"
+        $text | Should -Match "\[3\]\s+Check-Update"
+        $text | Should -Match "\[4\]\s+Status"
+        $text | Should -Match "\[5\]\s+Verify"
+        $text | Should -Match "\[6\]\s+Reinstall"
+        $text | Should -Match "\[7\]\s+Diagnose"
+        $text | Should -Match "\[8\]\s+Triton Info"
+        $text | Should -Match "\[9\]\s+Help"
+        $text | Should -Match "\[0\]\s+Abort"
+        $text | Should -Match "Enter action \[0-9\] \(0 to abort\):"
         $LASTEXITCODE | Should -Be 0
     }
 
-    It "setup.bat interactive submenus navigate and return to main menu" {
+    It "setup.bat with <nul EOF exits cleanly with code 0 without hanging" {
         $setupBat = Join-Path $script:repoRoot "setup.bat"
-        # Enter install submenu (1), select back (5), then exit (9)
-        $output = cmd.exe /c "(echo 1 & echo 5 & echo 9) | $setupBat"
-        $text = ($output -join "`n")
-        $text | Should -Match "WinROCm-PyTorch: Installation Options"
-        $text | Should -Match "Standard Installation"
-        $text | Should -Match "Install with Triton"
-        $text | Should -Match "Dry-Run"
-        $text | Should -Match "Return to Main Menu"
+        $output = cmd.exe /c "$setupBat <nul"
         $LASTEXITCODE | Should -Be 0
+    }
 
-        # Enter help submenu (8), select back (9), then exit (9)
-        $outputHelp = cmd.exe /c "(echo 8 & echo 9 & echo 9) | $setupBat"
-        $textHelp = ($outputHelp -join "`n")
-        $textHelp | Should -Match "Documentation & Command Help"
-        $textHelp | Should -Match "Install Help"
-        $textHelp | Should -Match "Update Help"
-        $textHelp | Should -Match "Reinstall Help"
+    It "setup.bat action 8 displays Triton guide and returns to main menu" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        # Select action 8 (Triton info), decline install (n), then abort (0)
+        $output = cmd.exe /c "(echo 8 & echo n & echo 0) | $setupBat"
+        $text = ($output -join "`n")
+        $text | Should -Match "TRITON & TORCH\.COMPILE ACCELERATION"
+        $text | Should -Match "torch\.compile"
         $LASTEXITCODE | Should -Be 0
     }
 
@@ -501,10 +497,10 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
     It "bin/rocm.bat exists, offers package manager menu, and mirrors CLI command routing" {
         $rocmBat = Join-Path $script:repoRoot "bin\rocm.bat"
         (Test-Path -Path $rocmBat) | Should -Be $true
-        $output = cmd.exe /c "echo 9 | $rocmBat"
+        $output = cmd.exe /c "echo 0 | $rocmBat"
         $text = ($output -join "`n")
         $text | Should -Match "WinROCm-PyTorch"
-        $text | Should -Match "Package Manager Options:"
+        $text | Should -Match "Select an action to perform:"
         $text | Should -Match "Status"
         $text | Should -Match "Update"
         $text | Should -Match "Reinstall"

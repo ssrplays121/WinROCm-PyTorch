@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-11-02
+
+### Added
+- **User-Accessible Interactive Setup Action Menu (`setup.bat` & `rocm.bat`)**: Replaced confusing nested submenus with a persistent, single-level action menu with choices `[1-9]` and `[0]` to abort (`Enter action [0-9] (0 to abort):`).
+- **Window Keep-Active Safeguard**: Prevented batch windows from closing abruptly when double-clicked or when pressing Enter without typing; loops back with a friendly reminder while cleanly terminating on non-interactive EOF (`<nul>`) for automated CI environments.
+- **Upfront Triton Onboarding & torch.compile Integration**: Setup banner reports live Triton status (`INSTALLED [torch.compile active]` vs `NOT INSTALLED [torch.compile disabled]`). Added comprehensive educational guide explaining Triton's purpose, benefits (15% to 50%+ speedup in ComfyUI/LLMs), and MSVC requirements via action `[8]` and `setup.bat triton` / `rocm triton`.
+- **1-Click Triton Upgrade for Existing Environments**: Existing installations missing Triton can install `triton-windows` seamlessly via option `[1]` or option `[8]` (`update.ps1 -WithTriton`) without wiping or reinstalling.
+- **Dedicated Subcommand-Level Help System**: Implemented individual help screens for all commands (`install`, `update`, `check-update`, `status`, `verify`, `reinstall`, `diagnose`, `triton`) accessible via prefix (`setup.bat help <cmd>`) and flags (`setup.bat <cmd> --help`, `-h`).
+- **Preflight & Installation Plan Triton Transparency**: Pre-installation plan and dry-run output explicitly report Triton acceleration status, and interactive installs prompt users to include Triton when unconfigured.
+
+### Fixed
+- **Accidental Window Close on Double-Click**: Resolved premature exit when pressing Enter without input.
+- **Batch Byte-Offset Label Resolution**: Enforced strict CRLF line endings across all batch files to prevent `The system cannot find the batch label specified` errors in `cmd.exe`.
+- **Batch Parenthesis Parser Conflicts**: Sanitized nested parentheses inside status variables and flattened menu navigation to prevent batch parser syntax corruption.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added

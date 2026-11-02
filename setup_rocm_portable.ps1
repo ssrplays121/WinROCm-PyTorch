@@ -404,6 +404,7 @@ function Invoke-DryRun {
     Write-Host "Install Directory   : $TargetDir"
     Write-Host "Python Version      : $($Config['PythonVersion'])"
     Write-Host "Components          : $($compNames -join ', ')"
+    Write-Host "Triton Acceleration : $(if ($IncludeTriton) { 'Enabled (triton-windows for torch.compile)' } else { 'Disabled (eager mode only)' })"
     Write-Host "Download Size (est) : ~3.5 GB"
     Write-Host "Disk Required (est) : ~11 GB installed, 15 GB peak"
     Write-Host "==================================================" -ForegroundColor Cyan
@@ -1135,19 +1136,32 @@ function Invoke-Main {
     if ($IncludeTriton) { $compList += "triton-windows" }
 
     if (-not $Unattended) {
+        $isInteractive = [Environment]::UserInteractive
+
+        if (-not $isInteractive) {
+            throw [SetupException]::new(2, "Running in non-interactive environment without -Yes. Aborting.")
+        }
+
+        if (-not $IncludeTriton) {
+            Write-Host "`n--- Optional: Triton Acceleration ---" -ForegroundColor Yellow
+            Write-Host "Triton enables 'torch.compile' support on AMD ROCm for faster AI models" -ForegroundColor Gray
+            Write-Host "(e.g., ComfyUI, Stable Diffusion, LLMs). Requires Visual Studio C++ Build Tools." -ForegroundColor Gray
+            $ansTriton = Read-Host "Include Triton (triton-windows)? [y/N]"
+            if ($ansTriton -and $ansTriton.Trim().ToLower() -eq 'y') {
+                $IncludeTriton = $true
+                $compList += "triton-windows"
+                Write-Host "  Triton acceleration enabled in plan." -ForegroundColor Green
+            }
+        }
         Write-Host "================== INSTALLATION PLAN ==================" -ForegroundColor Cyan
         Write-Host "Target Directory : $resolvedInstallDir"
         Write-Host "ROCm Release     : $($releaseInfo['Name'])"
-        Write-Host "Components       : $($compList -join ', ')"
+        Write-Host "Components          : $($compList -join ', ')"
+        Write-Host "Triton Acceleration : $(if ($IncludeTriton) { 'Enabled (triton-windows for torch.compile)' } else { 'Disabled (eager mode only; pass -WithTriton to enable)' })"
         Write-Host "Download Size    : ~3.5 GB"
         Write-Host "Peak Disk Space  : ~15 GB"
         Write-Host "=======================================================" -ForegroundColor Cyan
 
-        # Check if running interactively
-        $isInteractive = [Environment]::UserInteractive
-        if (-not $isInteractive) {
-            throw [SetupException]::new(2, "Running in non-interactive environment without -Yes. Aborting.")
-        }
 
         $answer = Read-Host "Proceed with installation? [Y/n]"
         if (-not ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLower() -eq 'y')) {
