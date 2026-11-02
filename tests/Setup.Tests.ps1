@@ -501,7 +501,7 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
         $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -InstallDir $script:repoRoot -CheckOnly
         $text = ($output -join "`n")
-        $text | Should -Match "rocm\s+7\.2"
+        $text | Should -Match "(?m)^\s*rocm\s+(?:None|\S+)\s+7\.2"
     }
 
     It "scripts/update.ps1 -CheckOnly is strictly read-only and does not modify config/releases.psd1" {
