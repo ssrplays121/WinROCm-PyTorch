@@ -110,7 +110,8 @@ Describe "ROCm Portable - Templates" {
             "rocm.bat",
             "update_rocm.bat",
             "status_rocm.bat",
-            "verify_rocm.bat"
+            "verify_rocm.bat",
+            "reinstall_rocm.bat"
         )
         foreach ($tmpl in $expectedTemplates) {
             $tmplPath = Join-Path $script:templateDir $tmpl
@@ -337,6 +338,30 @@ Describe "ROCm Portable - Bootstrapper and PATH Management" {
 }
 
 Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
+    BeforeAll {
+        $script:createdBin = $false
+        $binDir = Join-Path $script:repoRoot "bin"
+        if (-not (Test-Path -Path $binDir)) {
+            Write-Launchers -TemplateDir $script:templateDir -TargetDir $script:repoRoot
+            $script:createdBin = $true
+        }
+
+        $script:createdState = $false
+        $stateFile = Join-Path $script:repoRoot ".rocm-portable.json"
+        if (-not (Test-Path -Path $stateFile)) {
+            Save-State -TargetDir $script:repoRoot -ScriptVer "0.3.0" -RocmRel "7.2" -PyVer "3.12.8" -TorchVer "2.9.1" -Components @("torch", "torchvision", "torchaudio")
+            $script:createdState = $true
+        }
+    }
+
+    AfterAll {
+        if ($script:createdState) {
+            Remove-Item -Path (Join-Path $script:repoRoot ".rocm-portable.json") -Force -ErrorAction SilentlyContinue
+        }
+        if ($script:createdBin) {
+            Remove-Item -Path (Join-Path $script:repoRoot "bin") -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
     It "setup.bat without arguments presents interactive action menu and exits cleanly on option 0" {
         $setupBat = Join-Path $script:repoRoot "setup.bat"
         $output = cmd.exe /c "echo 0 | $setupBat"

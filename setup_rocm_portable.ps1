@@ -788,7 +788,7 @@ function Write-Launchers {
         New-Item -ItemType Directory -Force -Path $binDir | Out-Null
     }
 
-    $launcherFiles = @("env_rocm.bat", "run_rocm.bat", "pip_rocm.bat", "shell_rocm.bat", "torchrun_rocm.bat", "env_rocm.ps1", "rocm.bat", "update_rocm.bat", "status_rocm.bat", "verify_rocm.bat")
+    $launcherFiles = @("env_rocm.bat", "run_rocm.bat", "pip_rocm.bat", "shell_rocm.bat", "torchrun_rocm.bat", "env_rocm.ps1", "rocm.bat", "update_rocm.bat", "status_rocm.bat", "verify_rocm.bat", "reinstall_rocm.bat")
 
     foreach ($f in $launcherFiles) {
         $src = Join-Path $TemplateDir $f
@@ -809,7 +809,7 @@ function Write-Launchers {
     # Install sitecustomize.py runtime shim into python\Lib\site-packages\
     $sitePackages = Join-Path $TargetDir "python\Lib\site-packages"
     $siteShimSrc  = Join-Path $TemplateDir "sitecustomize.py"
-    if (Test-Path -Path $siteShimSrc) {
+    if ((Test-Path -Path $siteShimSrc) -and (Test-Path -Path $sitePackages)) {
         Copy-Item -Path $siteShimSrc -Destination (Join-Path $sitePackages "sitecustomize.py") -Force
         Write-Host "  Installed sitecustomize.py runtime shim to site-packages." -ForegroundColor Green
     }
