@@ -337,13 +337,44 @@ Describe "ROCm Portable - Bootstrapper and PATH Management" {
 }
 
 Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
-    It "setup.bat without arguments displays guidance to run setup.bat -Help" {
+    It "setup.bat without arguments presents interactive window of options and exits cleanly on option 9" {
         $setupBat = Join-Path $script:repoRoot "setup.bat"
-        $output = cmd.exe /c "$setupBat"
+        $output = cmd.exe /c "echo 9 | $setupBat"
         $text = ($output -join "`n")
-        $text | Should -Match "Run 'setup\.bat -Help'"
-        $text | Should -Match "Quick Commands:"
-        $text | Should -Match "setup\.bat update"
+        $text | Should -Match "WinROCm-PyTorch: Portable AMD ROCm PyTorch Environment & Package Manager"
+        $text | Should -Match "Package Manager Options:"
+        $text | Should -Match "1\)\s+Install"
+        $text | Should -Match "2\)\s+Update"
+        $text | Should -Match "3\)\s+Check-Update"
+        $text | Should -Match "4\)\s+Status"
+        $text | Should -Match "5\)\s+Verify"
+        $text | Should -Match "6\)\s+Reinstall"
+        $text | Should -Match "7\)\s+Diagnose"
+        $text | Should -Match "8\)\s+Help"
+        $text | Should -Match "9\)\s+Exit"
+        $LASTEXITCODE | Should -Be 0
+    }
+
+    It "setup.bat interactive submenus navigate and return to main menu" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        # Enter install submenu (1), select back (5), then exit (9)
+        $output = cmd.exe /c "(echo 1 & echo 5 & echo 9) | $setupBat"
+        $text = ($output -join "`n")
+        $text | Should -Match "WinROCm-PyTorch: Installation Options"
+        $text | Should -Match "Standard Installation"
+        $text | Should -Match "Install with Triton"
+        $text | Should -Match "Dry-Run"
+        $text | Should -Match "Return to Main Menu"
+        $LASTEXITCODE | Should -Be 0
+
+        # Enter help submenu (8), select back (9), then exit (9)
+        $outputHelp = cmd.exe /c "(echo 8 & echo 9 & echo 9) | $setupBat"
+        $textHelp = ($outputHelp -join "`n")
+        $textHelp | Should -Match "Documentation & Command Help"
+        $textHelp | Should -Match "Install Help"
+        $textHelp | Should -Match "Update Help"
+        $textHelp | Should -Match "Reinstall Help"
+        $LASTEXITCODE | Should -Be 0
     }
 
     It "setup.bat help displays full command reference" {
@@ -353,6 +384,54 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $text | Should -Match "WinROCm-PyTorch Command Line Reference"
         $text | Should -Match "check-update"
         $text | Should -Match "-WithTriton"
+        $text | Should -Match "Individual Help:"
+        $LASTEXITCODE | Should -Be 0
+    }
+
+    It "setup.bat provides individual help options for every command via CLI" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+
+        # install help
+        $outIns = cmd.exe /c "$setupBat install help"
+        ($outIns -join "`n") | Should -Match "WinROCm Command Help: INSTALL"
+        ($outIns -join "`n") | Should -Match "-WithTriton"
+
+        $outInsPrefix = cmd.exe /c "$setupBat help install"
+        ($outInsPrefix -join "`n") | Should -Match "WinROCm Command Help: INSTALL"
+
+        # update help
+        $outUpd = cmd.exe /c "$setupBat update --help"
+        ($outUpd -join "`n") | Should -Match "WinROCm Command Help: UPDATE"
+        ($outUpd -join "`n") | Should -Match "Linux Package Manager Workflow"
+
+        # check-update help
+        $outChk = cmd.exe /c "$setupBat check-update help"
+        ($outChk -join "`n") | Should -Match "WinROCm Command Help: CHECK-UPDATE"
+
+        # status help
+        $outStat = cmd.exe /c "$setupBat status -h"
+        ($outStat -join "`n") | Should -Match "WinROCm Command Help: STATUS"
+
+        # verify help
+        $outVer = cmd.exe /c "$setupBat verify help"
+        ($outVer -join "`n") | Should -Match "WinROCm Command Help: VERIFY"
+
+        # reinstall help
+        $outRein = cmd.exe /c "$setupBat reinstall help"
+        ($outRein -join "`n") | Should -Match "WinROCm Command Help: REINSTALL"
+
+        # diagnose help
+        $outDiag = cmd.exe /c "$setupBat diagnose help"
+        ($outDiag -join "`n") | Should -Match "WinROCm Command Help: DIAGNOSE"
+    }
+
+    It "setup.bat with an unknown command exits with code 1 and error message" {
+        $setupBat = Join-Path $script:repoRoot "setup.bat"
+        $output = cmd.exe /c "$setupBat invalid_cmd 2>&1"
+        $LASTEXITCODE | Should -Be 1
+        $text = ($output -join "`n")
+        $text | Should -Match "\[ERROR\] Unknown command 'invalid_cmd'"
+        $text | Should -Match "setup\.bat -Help"
     }
 
     It "scripts/status.ps1 runs and reports environment details" {
@@ -364,6 +443,14 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $text | Should -Match "Install Directory"
     }
 
+    It "scripts/status.ps1 handles -Help without error" {
+        $statusScript = Join-Path $script:repoRoot "scripts\status.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $statusScript -Help
+        $LASTEXITCODE | Should -Be 0
+        $text = ($output -join "`n")
+        $text | Should -Match "WINROCM: STATUS HELP"
+    }
+
     It "scripts/update.ps1 -CheckOnly generates preview diff table without writing" {
         $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
         (Test-Path -Path $updateScript) | Should -Be $true
@@ -373,13 +460,20 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $text | Should -Match "Package Status"
     }
 
-    It "setup.bat with an unknown command exits with code 1 and error message" {
-        $setupBat = Join-Path $script:repoRoot "setup.bat"
-        $output = cmd.exe /c "$setupBat invalid_cmd 2>&1"
-        $LASTEXITCODE | Should -Be 1
+    It "scripts/update.ps1 handles -Help without error" {
+        $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -Help
+        $LASTEXITCODE | Should -Be 0
         $text = ($output -join "`n")
-        $text | Should -Match "\[ERROR\] Unknown command 'invalid_cmd'"
-        $text | Should -Match "setup\.bat -Help"
+        $text | Should -Match "WINROCM PACKAGE MANAGER: UPDATE HELP"
+    }
+
+    It "setup_rocm_portable.ps1 handles -Help cleanly" {
+        $setupPs1 = Join-Path $script:repoRoot "setup_rocm_portable.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupPs1 -Help
+        $LASTEXITCODE | Should -Be 0
+        $text = ($output -join "`n")
+        $text | Should -Match "WINROCM-PYTORCH INSTALLER HELP"
     }
 
     It "scripts/update.ps1 -CheckOnly tracks rocm metapackage in diff items" {
@@ -404,20 +498,59 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $afterContent | Should -Be $origContent
     }
 
-    It "bin/rocm.bat exists and mirrors CLI command routing" {
+    It "bin/rocm.bat exists, offers package manager menu, and mirrors CLI command routing" {
         $rocmBat = Join-Path $script:repoRoot "bin\rocm.bat"
         (Test-Path -Path $rocmBat) | Should -Be $true
-        $output = cmd.exe /c "$rocmBat"
+        $output = cmd.exe /c "echo 9 | $rocmBat"
         $text = ($output -join "`n")
         $text | Should -Match "WinROCm-PyTorch"
-        $text | Should -Match "rocm status"
-        $text | Should -Match "rocm update"
+        $text | Should -Match "Package Manager Options:"
+        $text | Should -Match "Status"
+        $text | Should -Match "Update"
+        $text | Should -Match "Reinstall"
+        $LASTEXITCODE | Should -Be 0
     }
 
-    It "Dedicated shortcuts update_rocm.bat, status_rocm.bat, and verify_rocm.bat exist" {
+    It "bin/rocm.bat provides individual help options for all subcommands" {
+        $rocmBat = Join-Path $script:repoRoot "bin\rocm.bat"
+
+        # rocm update help
+        $outUpd = cmd.exe /c "$rocmBat update help"
+        ($outUpd -join "`n") | Should -Match "WinROCm Command Help: UPDATE"
+
+        # rocm reinstall --help
+        $outRein = cmd.exe /c "$rocmBat reinstall --help"
+        ($outRein -join "`n") | Should -Match "WinROCm Command Help: REINSTALL"
+
+        # rocm help status
+        $outStat = cmd.exe /c "$rocmBat help status"
+        ($outStat -join "`n") | Should -Match "WinROCm Command Help: STATUS"
+
+        # rocm run help
+        $outRun = cmd.exe /c "$rocmBat run help"
+        ($outRun -join "`n") | Should -Match "WinROCm Command Help: RUN"
+
+        # rocm pip help
+        $outPip = cmd.exe /c "$rocmBat pip help"
+        ($outPip -join "`n") | Should -Match "WinROCm Command Help: PIP"
+
+        # rocm shell help
+        $outShell = cmd.exe /c "$rocmBat shell help"
+        ($outShell -join "`n") | Should -Match "WinROCm Command Help: SHELL"
+    }
+
+    It "Dedicated shortcuts update_rocm.bat, status_rocm.bat, verify_rocm.bat, and reinstall_rocm.bat exist" {
         (Test-Path -Path (Join-Path $script:repoRoot "bin\update_rocm.bat")) | Should -Be $true
         (Test-Path -Path (Join-Path $script:repoRoot "bin\status_rocm.bat")) | Should -Be $true
         (Test-Path -Path (Join-Path $script:repoRoot "bin\verify_rocm.bat")) | Should -Be $true
+        (Test-Path -Path (Join-Path $script:repoRoot "bin\reinstall_rocm.bat")) | Should -Be $true
+    }
+
+    It "bin/reinstall_rocm.bat executes individual help cleanly" {
+        $reinBat = Join-Path $script:repoRoot "bin\reinstall_rocm.bat"
+        $output = cmd.exe /c "$reinBat help"
+        $text = ($output -join "`n")
+        $text | Should -Match "WinROCm Command Help: REINSTALL"
+        $LASTEXITCODE | Should -Be 0
     }
 }
-

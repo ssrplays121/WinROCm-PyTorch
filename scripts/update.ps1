@@ -15,8 +15,30 @@ param(
     [switch]$CheckOnly,
     [Alias("y")]
     [switch]$Yes,
-    [switch]$WithTriton
+    [switch]$WithTriton,
+    [Alias("h")]
+    [switch]$Help
 )
+
+if ($Help -or ($InstallDir -in @('-h', '-help', '--help', '/?', 'help'))) {
+    Write-Host "`n================ WINROCM PACKAGE MANAGER: UPDATE HELP ================" -ForegroundColor Cyan
+    Write-Host "Usage:"
+    Write-Host "  setup.bat update [options]"
+    Write-Host "  rocm update [options]"
+    Write-Host "  powershell -File scripts\update.ps1 [-InstallDir <path>] [options]"
+    Write-Host "`nDescription:"
+    Write-Host "  Synchronizes remote package catalog from GitHub, inspects currently installed"
+    Write-Host "  Python package versions via pure-Python metadata, compares against upstream"
+    Write-Host "  candidates, presents an interactive diff table, and applies targeted upgrades."
+    Write-Host "`nOptions:"
+    Write-Host "  -CheckOnly        Preview candidate updates without downloading or modifying files."
+    Write-Host "  -y, -Yes          Unattended mode: automatically apply updates without prompting."
+    Write-Host "  -WithTriton       Include matching triton-windows wheel for torch.compile support."
+    Write-Host "  -RocmRelease <v>  Target specific release version track (e.g. 7.2, 7.2.1)."
+    Write-Host "  -Help, -h         Display this help information."
+    Write-Host "======================================================================`n" -ForegroundColor Cyan
+    return
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"

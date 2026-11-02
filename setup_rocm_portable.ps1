@@ -67,7 +67,9 @@ param(
     [switch]$DryRun,
     [switch]$Diagnose,
     [Alias("y")]
-    [switch]$Yes
+    [switch]$Yes,
+    [Alias("h")]
+    [switch]$Help
 )
 
 Set-StrictMode -Version Latest
@@ -1017,11 +1019,37 @@ function Invoke-Diagnose {
 # ---------------------------------------------------------------------------
 # Main Execution Entry Point
 # ---------------------------------------------------------------------------
+function Show-SetupHelp {
+    Write-Host "`n================ WINROCM-PYTORCH INSTALLER HELP ================" -ForegroundColor Cyan
+    Write-Host "Usage:"
+    Write-Host "  setup.bat install [options]"
+    Write-Host "  powershell -File setup_rocm_portable.ps1 [-InstallDir <path>] [options]"
+    Write-Host "`nDescription:"
+    Write-Host "  Automates a fully isolated, portable Python 3.12 ROCm PyTorch installation"
+    Write-Host "  for modern AMD Radeon and Ryzen AI GPUs on Windows 11."
+    Write-Host "`nOptions:"
+    Write-Host "  -Install            Trigger environment installation (default action)."
+    Write-Host "  -InstallDir <path>  Target directory for installation (default: script root)."
+    Write-Host "  -RocmRelease <ver>  Target ROCm release version (e.g. 7.2, 7.2.1)."
+    Write-Host "  -WithTriton         Include triton-windows wheel for torch.compile acceleration."
+    Write-Host "  -NoVision           Skip torchvision installation."
+    Write-Host "  -NoAudio            Skip torchaudio installation."
+    Write-Host "  -Reinstall          Wipe existing python/ environment and reinstall cleanly."
+    Write-Host "  -DryRun             Validate prerequisites and download URLs without installing."
+    Write-Host "  -Diagnose           Collect diagnostic telemetry into diagnose.txt."
+    Write-Host "  -SkipGpuCheck       Bypass GPU hardware compatibility verification."
+    Write-Host "  -SkipVerify         Skip post-install verification test suite."
+    Write-Host "  -y, -Yes            Unattended mode (skip interactive prompts)."
+    Write-Host "  -Help, -h           Display this help information."
+    Write-Host "================================================================`n" -ForegroundColor Cyan
+}
+
 function Invoke-Main {
     [CmdletBinding()]
     param(
         [string]$TargetInstallDir,
         [string]$SelectedRelease,
+        [switch]$InstallMode,
         [switch]$SkipVision,
         [switch]$SkipAudio,
         [switch]$IncludeTriton,
@@ -1292,10 +1320,15 @@ function Invoke-Main {
 
 # Only execute Invoke-Main if this script is run directly, not when dot-sourced for testing
 if ($MyInvocation.InvocationName -ne '.') {
+    if ($Help -or ($InstallDir -in @('-h', '-help', '--help', '/?', 'help'))) {
+        Show-SetupHelp
+        exit 0
+    }
     $scriptExit = 0
     try {
         Invoke-Main -TargetInstallDir $InstallDir `
             -SelectedRelease $RocmRelease `
+            -InstallMode:$Install `
             -SkipVision:$NoVision `
             -SkipAudio:$NoAudio `
             -IncludeTriton:$WithTriton `

@@ -10,8 +10,27 @@
 
 [CmdletBinding()]
 param(
-    [string]$InstallDir
+    [string]$InstallDir,
+    [Alias("h")]
+    [switch]$Help
 )
+
+if ($Help -or ($InstallDir -in @('-h', '-help', '--help', '/?', 'help'))) {
+    Write-Host "`n==================== WINROCM: STATUS HELP ====================" -ForegroundColor Cyan
+    Write-Host "Usage:"
+    Write-Host "  setup.bat status"
+    Write-Host "  rocm status"
+    Write-Host "  powershell -File scripts\status.ps1 [-InstallDir <path>]"
+    Write-Host "`nDescription:"
+    Write-Host "  Inspects installation state (.rocm-portable.json), package versions via fast"
+    Write-Host "  pure-Python metadata (importlib.metadata), AMD GPU display adapters, and"
+    Write-Host "  constraints-rocm.txt package lock status."
+    Write-Host "`nOptions:"
+    Write-Host "  -InstallDir <path> Path to WinROCm installation directory."
+    Write-Host "  -Help, -h          Display this help information."
+    Write-Host "==============================================================`n" -ForegroundColor Cyan
+    return
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"

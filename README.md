@@ -81,10 +81,13 @@ If successful, you will see your AMD Radeon GPU identified with ROCm acceleratio
 
 ## Package Manager & CLI Reference
 
-WinROCm-PyTorch features a Linux package manager-style CLI (`dnf`/`apt` workflow). You can run commands locally via `setup.bat` or globally via `rocm` once added to your PATH:
+WinROCm-PyTorch features a full Linux package manager-style CLI (`dnf`/`apt` workflow) with interactive menus, dedicated submenus, and individual command help.
+
+When double-clicked or opened without parameters, `setup.bat` presents an interactive window of options to choose from. You can also run commands locally via `setup.bat` or globally via `rocm` once added to your PATH:
 
 | Command | Linux Equivalent | Description |
 |---|---|---|
+| `setup.bat` | — | Interactive window of options: Main menu & submenus for install, update, reinstall, etc. |
 | `setup.bat install` | `dnf install` | Install isolated Python, ROCm SDK, and PyTorch environment. |
 | `setup.bat status` | `dnf info` | Fast inspection of installed package versions and detected AMD GPU. |
 | `setup.bat check-update` | `dnf check-update` | Preview available candidate updates from upstream without writing. |
@@ -93,7 +96,19 @@ WinROCm-PyTorch features a Linux package manager-style CLI (`dnf`/`apt` workflow
 | `setup.bat verify` | — | Run hardware verification suite (GEMM, Conv2d, BatchNorm, Triton). |
 | `setup.bat reinstall` | `dnf reinstall` | Wipe existing environment and perform a fresh install. |
 | `setup.bat diagnose` | — | Generate `diagnose.txt` system telemetry report. |
-| `setup.bat help` | `dnf --help` | Display command usage and available options. |
+| `setup.bat help [cmd]` | `dnf help <cmd>` | Display command usage or detailed individual help for any command. |
+
+### Individual Help Options
+Every command and submenu features its own individual help:
+```cmd
+setup.bat help install      # (or: setup.bat install --help)
+setup.bat help update       # (or: setup.bat update --help)
+setup.bat help check-update # (or: setup.bat check-update -h)
+setup.bat help status       # (or: setup.bat status -h)
+setup.bat help reinstall    # (or: setup.bat reinstall --help)
+setup.bat help verify       # (or: setup.bat verify --help)
+setup.bat help diagnose     # (or: setup.bat diagnose --help)
+```
 
 ---
 
@@ -109,6 +124,9 @@ WinROCm-PyTorch isolates all executables within dedicated launcher wrappers insi
 | `shell_rocm` | Open an interactive command prompt bound to this environment | `shell_rocm` |
 | `torchrun_rocm` | Execute distributed / multi-process scripts | `torchrun_rocm train.py` |
 | `update_rocm` | Direct shortcut to check and apply updates | `update_rocm` |
+| `status_rocm` | Direct shortcut to inspect environment & GPU info | `status_rocm` |
+| `verify_rocm` | Direct shortcut to run hardware verification tests | `verify_rocm` |
+| `reinstall_rocm` | Direct shortcut to perform a clean environment reinstall | `reinstall_rocm` |
 | `. .\bin\env_rocm.ps1` | Activate the ROCm environment in an existing PowerShell session | `. .\bin\env_rocm.ps1` |
 
 ### Optional: Global Access via Windows User PATH
