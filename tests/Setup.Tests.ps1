@@ -359,7 +359,7 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
 
     It "setup.bat with <nul EOF exits cleanly with code 0 without hanging" {
         $setupBat = Join-Path $script:repoRoot "setup.bat"
-        $output = cmd.exe /c "$setupBat <nul"
+        $null = cmd.exe /c "$setupBat <nul"
         $LASTEXITCODE | Should -Be 0
     }
 

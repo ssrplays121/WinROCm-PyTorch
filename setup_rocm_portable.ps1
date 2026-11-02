@@ -13,6 +13,9 @@
 .PARAMETER RocmRelease
     ROCm release to install (e.g. '7.2', '7.2.1'). Defaults to DefaultRelease in config/releases.psd1.
 
+.PARAMETER Install
+    Trigger environment installation (default action).
+
 .PARAMETER NoVision
     Skip installation of torchvision.
 
@@ -39,6 +42,9 @@
 
 .PARAMETER Yes
     Bypass the interactive confirmation prompt (for non-interactive and CI use).
+
+.PARAMETER Help
+    Display this help information.
 
 .EXAMPLE
     .\setup_rocm_portable.ps1
@@ -1125,6 +1131,11 @@ function Invoke-Main {
     if ($IsDryRun) {
         Invoke-DryRun -Config $config -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:(-not $SkipVision) -IncludeAudio:(-not $SkipAudio) -IncludeTriton:$IncludeTriton
         return
+    }
+
+    # Installation mode (default execution or explicit -Install switch)
+    if ($InstallMode) {
+        Write-Verbose -Message "Installation explicitly requested via -Install."
     }
 
     # Confirmation Prompt (unless -Yes)
