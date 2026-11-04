@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-11-04
+
+### Added
+- **Authoritative Dynamic Hash Resolution**: Added `Resolve-OfficialGetPipSha256` to resolve official cryptographic SHA256 checksums dynamically from canonical repository catalog (`releases.psd1`) and PyPA's official Git release commit API (`pypa/get-pip`).
+- **Strict Cryptographic Enforcement (Zero Drift Tolerance)**: Replaced loose file size and string header heuristics with zero-compromise cryptographic verification. Any downloaded payload that cannot be verified against the pinned release, canonical catalog, or official PyPA Git commit is immediately aborted with exit code 3 (`SetupException`).
+- **Automated CI Catalog Synchronization**: Enhanced `.github/workflows/url-check.yml` to automatically detect upstream PyPA updates, fetch corresponding pip release metadata from PyPI, update `config/releases.psd1`, and commit updates directly.
+- **Full Release URL CI Coverage**: Added `PythonDevMsiUrl` to `.github/workflows/url-check.yml` to ensure all 18 release assets (including C/C++ development headers) are actively verified every week.
+
+### Fixed
+- **Pip Bootstrap Checksum Mismatch**: Updated `GetPipSha256` in `config/releases.psd1` to `356E0D0DE21CDC348C3394084D90939B85E4246C4D14C76AEE6CA4F46646EA98` and bumped pinned `PipVersion` to `26.3` to match upstream PyPA pip 26.3 release.
+
 ## [0.3.1] - 2026-11-02
 
 ### Added

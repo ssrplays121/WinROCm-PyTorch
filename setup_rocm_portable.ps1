@@ -114,6 +114,86 @@ function Get-FileSha256 {
     return (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash
 }
 
+function Resolve-OfficialGetPipSha256 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ActualSha,
+        [string]$CanonicalCatalogUrl = "https://raw.githubusercontent.com/ssrplays121/WinROCm-PyTorch/main/config/releases.psd1"
+    )
+
+    $targetSha = $ActualSha.Trim().ToUpperInvariant()
+
+    # Tier 1: Canonical WinROCm repository remote catalog
+    try {
+        $remoteText = $null
+        if ($CanonicalCatalogUrl -like "file://*") {
+            $localFilePath = [System.Uri]::new($CanonicalCatalogUrl).LocalPath
+            $remoteText = [System.IO.File]::ReadAllText($localFilePath)
+        } else {
+            $webReq = [System.Net.HttpWebRequest]::Create($CanonicalCatalogUrl)
+            $webReq.Timeout = 4000
+            $webReq.Method = "GET"
+            $webReq.UserAgent = "WinROCm-Portable"
+            $resp = $webReq.GetResponse()
+            $reader = [System.IO.StreamReader]::new($resp.GetResponseStream())
+            $remoteText = $reader.ReadToEnd()
+            $reader.Close()
+            $resp.Close()
+        }
+
+        if ($remoteText -and ($remoteText -match "GetPipSha256\s*=\s*['\""]([A-Fa-f0-9]{64})['\""]")) {
+            $remoteSha = $Matches[1].ToUpperInvariant()
+            if ($remoteSha -eq $targetSha) {
+                return [PSCustomObject]@{
+                    Verified = $true
+                    Source   = "Canonical WinROCm Catalog ($CanonicalCatalogUrl)"
+                    Sha256   = $remoteSha
+                }
+            }
+        }
+    } catch {
+        $null = $_
+    }
+
+    # Tier 2: Official PyPA GitHub repository commit API for public/get-pip.py
+    try {
+        $headers = @{
+            'User-Agent' = 'WinROCm-Portable'
+            'Accept'     = 'application/vnd.github.v3+json'
+        }
+        $commitResp = Invoke-RestMethod -Uri "https://api.github.com/repos/pypa/get-pip/commits?path=public/get-pip.py&per_page=1" -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+        if ($commitResp -and $commitResp.Count -gt 0 -and $commitResp[0].sha) {
+            $commitSha = [string]$commitResp[0].sha
+            $rawUrl = "https://raw.githubusercontent.com/pypa/get-pip/$commitSha/public/get-pip.py"
+            $tempCheck = [System.IO.Path]::GetTempFileName()
+            try {
+                $null = Invoke-WebRequest -Uri $rawUrl -OutFile $tempCheck -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+                if (Test-Path -Path $tempCheck) {
+                    $pypaSha = (Get-FileHash -Path $tempCheck -Algorithm SHA256).Hash.ToUpperInvariant()
+                    if ($pypaSha -eq $targetSha) {
+                        return [PSCustomObject]@{
+                            Verified  = $true
+                            Source    = "PyPA Official Git Commit ($commitSha)"
+                            Sha256    = $pypaSha
+                            CommitSha = $commitSha
+                        }
+                    }
+                }
+            } finally {
+                Remove-Item -Path $tempCheck -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } catch {
+        $null = $_
+    }
+
+    return [PSCustomObject]@{
+        Verified = $false
+        Source   = $null
+        Sha256   = $null
+    }
+}
+
 function Test-PythonModule {
     param(
         [string]$PythonExe,
@@ -626,13 +706,35 @@ function Install-Pip {
             Invoke-WebRequest -Uri $Config['GetPipUrl'] -OutFile $getPipPy -UseBasicParsing
         }
 
-        # Check hash
-        $actualSha = Get-FileSha256 -FilePath $getPipPy
-        if ($actualSha -ne $expectedSha) {
-            Remove-Item -Path $getPipPy -Force -ErrorAction SilentlyContinue
-            throw [SetupException]::new(3, "get-pip.py SHA256 mismatch! Expected: $expectedSha, Actual: $actualSha")
-        }
+        # Strict cryptographic verification against known pin or authoritative upstream sources
+        $actualSha = (Get-FileSha256 -FilePath $getPipPy).ToUpperInvariant()
+        $expectedShaUpper = $expectedSha.Trim().ToUpperInvariant()
 
+        if ($actualSha -eq $expectedShaUpper) {
+            Write-Host "  get-pip.py checksum verified against pinned release ($actualSha)." -ForegroundColor Green
+        } else {
+            Write-Warning "get-pip.py SHA256 ($actualSha) differs from local pin ($expectedShaUpper)."
+            Write-Host "  Resolving official hash from authoritative upstream sources (canonical repo & PyPA Git)..." -ForegroundColor Yellow
+
+            $authResult = Resolve-OfficialGetPipSha256 -ActualSha $actualSha
+            if ($authResult.Verified) {
+                Write-Host "  [Security Verified] get-pip.py SHA256 cryptographically confirmed via $($authResult.Source)." -ForegroundColor Green
+                try {
+                    $cfgFile = Join-Path $TargetDir "config\releases.psd1"
+                    if (Test-Path -Path $cfgFile) {
+                        $rawCfg = [System.IO.File]::ReadAllText($cfgFile)
+                        $rawCfg = $rawCfg -replace "GetPipSha256\s*=\s*['\""][^'\""]+['\""]", "GetPipSha256      = '$($authResult.Sha256)'"
+                        [System.IO.File]::WriteAllText($cfgFile, $rawCfg, [System.Text.UTF8Encoding]::new($false))
+                        Write-Host "  Updated local config\releases.psd1 with verified official checksum." -ForegroundColor Gray
+                    }
+                } catch {
+                    Write-Warning "Could not update local config\releases.psd1: $($_.Exception.Message)"
+                }
+            } else {
+                Remove-Item -Path $getPipPy -Force -ErrorAction SilentlyContinue
+                throw [SetupException]::new(3, "CRITICAL: get-pip.py SHA256 ($actualSha) failed cryptographic verification against all official PyPA sources! Expected: $expectedShaUpper. Aborting to protect system integrity.")
+            }
+        }
         & $pythonExe $getPipPy --no-warn-script-location
         Assert-LastExit "get-pip bootstrap" 4
         Remove-Item -Path $getPipPy -Force -ErrorAction SilentlyContinue

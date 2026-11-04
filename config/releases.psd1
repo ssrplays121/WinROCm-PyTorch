@@ -1,4 +1,4 @@
-﻿@{
+@{
     DefaultRelease    = '7.2'
     PythonVersion     = '3.12.8'
     PythonZipUrl      = 'https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip'
@@ -6,8 +6,8 @@
     PythonDevMsiUrl   = 'https://www.python.org/ftp/python/3.12.8/amd64/dev.msi'
     PythonDevMsiSha256= '041326640A9B3A9FF64D6F56624C9648D53FDDCDA3BF3EA1FCB8D0F4EFBEEB1E'
     GetPipUrl         = 'https://bootstrap.pypa.io/get-pip.py'
-    GetPipSha256      = 'FB24E693BAB954209A063D90953621412CCAD4A500905A726286E038F508DDF6'
-    PipVersion        = '26.2.1'
+    GetPipSha256      = '356E0D0DE21CDC348C3394084D90939B85E4246C4D14C76AEE6CA4F46646EA98'
+    PipVersion        = '26.3'
     SetuptoolsVersion = '84.0.0'
     WheelVersion      = '0.48.0'
 

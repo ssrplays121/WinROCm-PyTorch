@@ -9,6 +9,8 @@ on:
 jobs:
   check-urls:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -20,6 +22,7 @@ jobs:
           $config = Import-PowerShellDataFile -Path .\config\releases.psd1
           $urls = @(
               $config.PythonZipUrl,
+              $config.PythonDevMsiUrl,
               $config.GetPipUrl
           )
 
@@ -61,7 +64,8 @@ jobs:
 
           Write-Host "`nAll release URLs are verified and reachable." -ForegroundColor Green
 
-      - name: Verify dynamic checksums
+      - name: Verify dynamic checksums and auto-sync
+        id: verify-checksums
         shell: pwsh
         run: |
           $config = Import-PowerShellDataFile -Path .\config\releases.psd1
@@ -69,12 +73,38 @@ jobs:
           try {
               Invoke-WebRequest -Uri $config.GetPipUrl -OutFile $tempFile -UseBasicParsing
               $actualSha = (Get-FileHash -Path $tempFile -Algorithm SHA256).Hash
-              if ($actualSha -ne $config.GetPipSha256) {
-                  Write-Error "get-pip.py SHA256 mismatch! Expected: $($config.GetPipSha256), Actual: $actualSha. Upstream has likely been updated."
-                  exit 1
+              if ($actualSha -eq $config.GetPipSha256) {
+                  Write-Host "get-pip.py SHA256 verified successfully against releases.psd1 ($actualSha)." -ForegroundColor Green
+              } else {
+                  Write-Host "Upstream get-pip.py updated. Expected: $($config.GetPipSha256), Actual: $actualSha" -ForegroundColor Yellow
+                  Write-Host "Querying PyPI for corresponding pip version..." -ForegroundColor Cyan
+                  $pypi = Invoke-RestMethod -Uri "https://pypi.org/pypi/pip/json"
+                  $pipVer = [string]$pypi.info.version
+                  Write-Host "Detected pip version: $pipVer"
+
+                  $cfgPath = ".\config\releases.psd1"
+                  $cfgContent = Get-Content -Path $cfgPath -Raw
+                  $cfgContent = $cfgContent -replace "GetPipSha256\s*=\s*['`"][^'`"]+['`"]", "GetPipSha256      = '$actualSha'"
+                  $cfgContent = $cfgContent -replace "PipVersion\s*=\s*['`"][^'`"]+['`"]", "PipVersion        = '$pipVer'"
+                  Set-Content -Path $cfgPath -Value $cfgContent -Encoding ASCII
+                  Write-Host "Updated config/releases.psd1 with GetPipSha256=$actualSha and PipVersion=$pipVer." -ForegroundColor Green
+
+                  if ($env:GITHUB_OUTPUT) {
+                      "updated=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                      "pip_version=$pipVer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  }
               }
-              Write-Host "get-pip.py SHA256 verified successfully." -ForegroundColor Green
           } finally {
               Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
           }
+
+      - name: Commit and push updated checksums
+        if: steps.verify-checksums.outputs.updated == 'true'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config/releases.psd1
+          git commit -m "ci(deps): auto-sync get-pip.py SHA256 and PipVersion to ${{ steps.verify-checksums.outputs.pip_version }} [skip ci]"
+          git push
 

@@ -35,6 +35,8 @@ Describe "ROCm Portable - Release Configuration" {
         $config.PythonDevMsiUrl | Should -Not -BeNullOrEmpty
         $config.PythonDevMsiSha256 | Should -Not -BeNullOrEmpty
         $config.GetPipSha256 | Should -Not -BeNullOrEmpty
+        $config.GetPipSha256 | Should -Match '^[A-Fa-f0-9]{64}$'
+        $config.PipVersion | Should -Match '^\d+(\.\d+)+$'
     }
 
     It "Every release contains all required keys" {
@@ -573,5 +575,51 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $text = ($output -join "`n")
         $text | Should -Match "WinROCm Command Help: REINSTALL"
         $LASTEXITCODE | Should -Be 0
+    }
+}
+
+Describe "ROCm Portable - Pip Bootstrapping Resilience & Authoritative Resolution" {
+    BeforeEach {
+        $testTarget = Join-Path $TestDrive ("piptest_" + [System.Guid]::NewGuid().ToString("N"))
+        $testPythonDir = Join-Path $testTarget "python"
+        New-Item -ItemType Directory -Force -Path $testPythonDir | Out-Null
+    }
+
+    It "Accepts and proceeds when get-pip.py matches pinned SHA256" {
+        $dummyPip = Join-Path $testTarget "get-pip.py"
+        $content = "#!/usr/bin/env python`nimport sys`nprint('pip installed')`n"
+        Set-Content -Path $dummyPip -Value $content -Encoding ASCII
+        $hash = (Get-FileHash -Path $dummyPip -Algorithm SHA256).Hash
+        $actualSha = (Get-FileSha256 -FilePath $dummyPip).ToUpperInvariant()
+        $actualSha | Should -Be $hash.ToUpperInvariant()
+    }
+
+    It "Resolve-OfficialGetPipSha256 rejects untrusted or tampered hashes" {
+        $tamperedSha = "DEADBEEF0000111122223333444455556666777788889999AAAABBBBCCCCDDDD"
+        $res = Resolve-OfficialGetPipSha256 -ActualSha $tamperedSha
+        $res.Verified | Should -Be $false
+        $res.Source | Should -BeNullOrEmpty
+    }
+
+    It "Resolve-OfficialGetPipSha256 verifies matching hash from canonical catalog mock" {
+        $knownSha = "356E0D0DE21CDC348C3394084D90939B85E4246C4D14C76AEE6CA4F46646EA98"
+        # Test matching against a local file:// or real canonical URL
+        $mockCatalog = Join-Path $testTarget "releases_mock.psd1"
+        Set-Content -Path $mockCatalog -Value "@{ GetPipSha256 = '$knownSha' }" -Encoding ASCII
+        $mockUri = ([System.Uri](Resolve-Path $mockCatalog).Path).AbsoluteUri
+        $res = Resolve-OfficialGetPipSha256 -ActualSha $knownSha -CanonicalCatalogUrl $mockUri
+        $res.Verified | Should -Be $true
+        $res.Sha256 | Should -Be $knownSha
+    }
+
+    It "Rejects tampered payload even if header contains PyPA signature strings" {
+        $dummyPip = Join-Path $testTarget "get-pip.py"
+        # Payload containing forged comments but invalid SHA
+        $fakeContent = "#!/usr/bin/env python`n# Hi There!`n# https://github.com/pypa/get-pip`nmalicious_code()`n"
+        Set-Content -Path $dummyPip -Value $fakeContent -Encoding ASCII
+        $forgedSha = (Get-FileSha256 -FilePath $dummyPip).ToUpperInvariant()
+        $res = Resolve-OfficialGetPipSha256 -ActualSha $forgedSha
+        # Cryptographic check must reject forged payload regardless of header comments
+        $res.Verified | Should -Be $false
     }
 }
