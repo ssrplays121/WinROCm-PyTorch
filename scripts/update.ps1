@@ -179,7 +179,7 @@ function Get-WheelVersion {
 # 5. Inspect Currently Installed Versions via pure-Python metadata
 $installedPackages = @{}
 if (Test-Path -Path $pythonExe) {
-    $probePy = @"
+    $probePy = @'
 import sys, importlib.metadata
 pkgs = ['rocm', 'torch', 'torchvision', 'torchaudio', 'rocm-sdk-core', 'rocm-sdk-devel', 'rocm-sdk-libraries-custom', 'triton-windows', 'pip']
 for p in pkgs:
@@ -187,9 +187,9 @@ for p in pkgs:
         print(f'{p}={importlib.metadata.version(p)}')
     except:
         print(f'{p}=None')
-"@
+'@
     try {
-        $out = & $pythonExe -c $probePy 2>$null
+        $out = $probePy | & $pythonExe - 2>$null
         foreach ($line in $out) {
             $p = $line -split '=', 2
             if ($p.Count -eq 2) {
@@ -275,11 +275,46 @@ foreach ($sdkFile in $candCfg['SdkFiles']) {
 # Triton (if installed or requested)
 $curTriton = if ($installedPackages.ContainsKey('triton-windows')) { $installedPackages['triton-windows'] } else { "None" }
 if ($curTriton -ne "None" -or $WithTriton) {
+    $candTorchVer = Get-WheelVersion -Filename $candCfg['Torch']
+    $candTorchMinor = if ($candTorchVer -match '^([0-9]+\.[0-9]+)') { $matches[1] } else { "2.9" }
+    $tritonPrefix = switch ($candTorchMinor) {
+        "2.6"  { "3.2" }
+        "2.7"  { "3.3" }
+        "2.8"  { "3.4" }
+        "2.9"  { "3.5" }
+        "2.10" { "3.6" }
+        "2.11" { "3.6" }
+        "2.12" { "3.7" }
+        "2.13" { "3.7" }
+        "2.14" { "3.8" }
+        "2.15" { "3.8" }
+        default { "3.5" }
+    }
+
+    $candTriton = if ($candCfg.ContainsKey('Triton') -and -not [string]::IsNullOrWhiteSpace($candCfg['Triton'])) {
+        [string]$candCfg['Triton']
+    } else {
+        $pypiCand = $null
+        try {
+            $pypiResp = Invoke-RestMethod -Uri "https://pypi.org/pypi/triton-windows/json" -TimeoutSec 3
+            if ($pypiResp -and $pypiResp.releases) {
+                $matchingKeys = @($pypiResp.releases.Keys | Where-Object { $_ -match "^$([regex]::Escape($tritonPrefix))\." })
+                if ($matchingKeys.Count -gt 0) {
+                    $pypiCand = ($matchingKeys | Sort-Object { try { [version]($_ -replace '\.post\d+', '') } catch { [version]"0.0" } })[-1]
+                }
+            }
+        } catch {
+            $pypiCand = $null
+        }
+        if ($pypiCand) { $pypiCand } else { "$tritonPrefix.1.post24" }
+    }
+
+    $isTritonUpgrade = ($curTriton -eq "None") -or ($curTriton -ne $candTriton)
     $diffItems += [PSCustomObject]@{
         Package   = "triton-windows"
         Current   = if ($curTriton -ne "None") { $curTriton } else { "[Not Installed]" }
-        Candidate = "latest matching wheel"
-        IsUpgrade = $true
+        Candidate = $candTriton
+        IsUpgrade = $isTritonUpgrade
         Type      = "Triton"
     }
 }
@@ -545,18 +580,18 @@ if (Test-Path -Path $templateDir) {
 }
 
 # Regenerate constraints-rocm.txt
-$constraintsPy = @"
-import importlib.metadata
+$constraintsPy = @'
+from importlib.metadata import distributions
 want = {"torch", "torchvision", "torchaudio", "rocm", "rocm-sdk-core", "rocm-sdk-devel", "rocm-sdk-libraries-custom", "triton", "triton-windows"}
 lines = []
-for dist in sorted(importlib.metadata.distributions(), key=lambda d: d.metadata['Name'].lower()):
-    name = dist.metadata['Name']
-    if name.lower().replace('_', '-') in want:
+for dist in sorted(distributions(), key=lambda d: d.metadata["Name"].lower()):
+    name = dist.metadata["Name"]
+    if name.lower().replace("_", "-") in want:
         lines.append(f"{name}=={dist.version}")
 print("\n".join(lines))
-"@
+'@
 try {
-    $constraintsContent = & $pythonExe -c $constraintsPy
+    $constraintsContent = $constraintsPy | & $pythonExe -
     if ($constraintsContent) {
         Set-Content -Path $constraintsFile -Value $constraintsContent -Encoding ASCII
         Write-Host "  Updated constraints-rocm.txt" -ForegroundColor Green

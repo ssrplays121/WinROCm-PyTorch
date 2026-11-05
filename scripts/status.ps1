@@ -75,7 +75,7 @@ if ($stateObj) {
 if (Test-Path -Path $pythonExe) {
     Write-Host "`n--- Installed Components ---" -ForegroundColor Cyan
 
-    $probePy = @"
+    $probePy = @'
 import sys, importlib.metadata
 
 packages = [
@@ -91,9 +91,9 @@ for p in packages:
         print(f'{p}={ver}')
     except importlib.metadata.PackageNotFoundError:
         print(f'{p}=None')
-"@
+'@
     try {
-        $output = & $pythonExe -c $probePy 2>$null
+        $output = $probePy | & $pythonExe - 2>$null
         $pkgMap = @{}
         foreach ($line in $output) {
             $parts = $line -split '=', 2

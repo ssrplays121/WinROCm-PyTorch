@@ -573,6 +573,13 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $afterContent | Should -Be $origContent
     }
 
+    It "scripts/update.ps1 -CheckOnly accurately resolves triton-windows candidate without hardcoding upgrade" {
+        $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -InstallDir $script:repoRoot -CheckOnly
+        $text = ($output -join "`n")
+        $text | Should -Not -Match "latest matching wheel -> \[Upgrade Available\]"
+    }
+
     It "bin/rocm.bat exists, offers package manager menu, and mirrors CLI command routing" {
         $rocmBat = Join-Path $script:repoRoot "bin\rocm.bat"
         (Test-Path -Path $rocmBat) | Should -Be $true
