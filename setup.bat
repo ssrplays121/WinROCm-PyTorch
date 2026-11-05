@@ -116,6 +116,24 @@ if /i "%CMD%"=="-diagnose" (
     goto do_diagnose
 )
 
+if /i "%CMD%"=="stage-release" (
+    if "!IS_HELP_REQ!"=="1" goto help_stage_release
+    goto do_stage_release
+)
+if /i "%CMD%"=="-stage-release" (
+    if "!IS_HELP_REQ!"=="1" goto help_stage_release
+    goto do_stage_release
+)
+
+if /i "%CMD%"=="test-and-promote" (
+    if "!IS_HELP_REQ!"=="1" goto help_test_and_promote
+    goto do_test_and_promote
+)
+if /i "%CMD%"=="-test-and-promote" (
+    if "!IS_HELP_REQ!"=="1" goto help_test_and_promote
+    goto do_test_and_promote
+)
+
 if /i "%CMD%"=="triton" goto help_triton
 if /i "%CMD%"=="-triton" goto help_triton
 if /i "%CMD%"=="--triton" goto help_triton
@@ -135,6 +153,8 @@ if /i "%SUB_CMD%"=="info" goto help_status
 if /i "%SUB_CMD%"=="verify" goto help_verify
 if /i "%SUB_CMD%"=="reinstall" goto help_reinstall
 if /i "%SUB_CMD%"=="diagnose" goto help_diagnose
+if /i "%SUB_CMD%"=="stage-release" goto help_stage_release
+if /i "%SUB_CMD%"=="test-and-promote" goto help_test_and_promote
 if /i "%SUB_CMD%"=="triton" goto help_triton
 goto show_help
 
@@ -160,6 +180,10 @@ echo   reinstall     Wipe existing environment and perform a fresh clean install
 echo   diagnose      Collect system diagnostic telemetry into diagnose.txt
 echo   triton        Display guide on Triton ^& torch.compile acceleration
 echo   help          Display this reference, or run 'setup.bat help ^<cmd^>' for topic help
+echo.
+echo Maintainer Commands:
+echo   stage-release    Scrape AMD release assets, compute SHA256, and stage in config
+echo   test-and-promote 1-click isolated sandbox provisioning, hardware test, ^& git promotion
 echo.
 echo Options:
 echo   -y, -Yes      Non-interactive unattended mode (auto-confirm prompts)
@@ -367,6 +391,55 @@ echo.
 echo Verification:
 echo   Run 'setup.bat verify' to run the verification suite, which includes a
 echo   Triton JIT test if Triton is installed.
+echo ================================================================================
+exit /b 0
+
+:help_stage_release
+echo ================================================================================
+echo   WinROCm Command Help: STAGE-RELEASE (Maintainer Tool)
+echo ================================================================================
+echo Purpose:
+echo   Scrapes and discovers required ROCm packages from AMD release endpoints,
+echo   computes cryptographic SHA-256 hashes via temporary disk buffering, resolves
+echo   the compatible triton-windows wheel from PyPI, and registers the release in
+echo   config/releases.psd1.
+echo.
+echo Usage:
+echo   setup.bat stage-release -Version ^<version^> [options]
+echo.
+echo Options:
+echo   -Version ^<ver^>     Target ROCm release version (e.g. 7.3, 7.2.1). Mandatory.
+echo   -CheckOnly         Preview scraped packages and SHA256 without modifying config.
+echo   help, -h, --help   Display this help message.
+echo.
+echo Examples:
+echo   setup.bat stage-release -Version 7.3
+echo   setup.bat stage-release -Version 7.2.1 -CheckOnly
+echo ================================================================================
+exit /b 0
+
+:help_test_and_promote
+echo ================================================================================
+echo   WinROCm Command Help: TEST-AND-PROMOTE (Maintainer Tool)
+echo ================================================================================
+echo Purpose:
+echo   1-click automated release verification and code promotion pipeline.
+echo   Provisions an isolated 4-part sandbox (.test-env\), executes hardware verification
+echo   tests on physical AMD GPU (GEMM, Conv2d, BatchNorm2d, F.normalize, Triton JIT),
+echo   and upon pass promotes the release to DefaultRelease, logs to CHANGELOG.md,
+echo   cleans the sandbox, and creates a git release branch.
+echo.
+echo Usage:
+echo   setup.bat test-and-promote -Version ^<version^> [options]
+echo.
+echo Options:
+echo   -Version ^<ver^>       Target ROCm release version (e.g. 7.3, 7.2.1). Mandatory.
+echo   -KeepSandbox         Preserve .test-env\ sandbox after promotion for debugging.
+echo   -SkipHardwareTest    Bypass physical GPU execution (for CI/offline testing).
+echo   help, -h, --help     Display this help message.
+echo.
+echo Examples:
+echo   setup.bat test-and-promote -Version 7.3
 echo ================================================================================
 exit /b 0
 
@@ -707,4 +780,12 @@ exit /b %errorlevel%
 
 :do_diagnose
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup_rocm_portable.ps1" -Diagnose !REST_ARGS!
+exit /b %errorlevel%
+
+:do_stage_release
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\dev\stage-release.ps1" !REST_ARGS!
+exit /b %errorlevel%
+
+:do_test_and_promote
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\dev\test-and-promote.ps1" !REST_ARGS!
 exit /b %errorlevel%

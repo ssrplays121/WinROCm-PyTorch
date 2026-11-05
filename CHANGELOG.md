@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-05
+
+### Added
+- **CI Workflow Hardening (`.github/workflows/url-check.yml`)**: Removed bot write permissions and unvetted direct-to-main auto-commit pushes. Converted into a strictly read-only URL health monitor validating all 19 pinned assets across official AMD, Python, PyPA, PyPI, and Microsoft endpoints.
+- **Fail-to-Notify Cloud Watchdog (`.github/workflows/version-watchdog.yml`)**: Introduced a scheduled weekly cloud watchdog scanning upstream AMD directories for new ROCm releases, PyPA for get-pip.py SHA-256 drift, PyPI for new pip and triton-windows versions, and Microsoft CDN for MSVC channel status. Implemented Fail-to-Notify design that posts Markdown comparison tables to GitHub Step Summaries and triggers repository owner email alerts upon detected drift.
+- **Automated Release Stager & Scraper (`scripts/dev/stage-release.ps1`)**: Added maintainer tool `setup.bat stage-release -Version <v>` to scrape AMD Windows release directories, discover all 7 required SDK/PyTorch wheels, compute cryptographic SHA-256 hashes via temporary disk buffering, resolve compatible triton-windows wheels from PyPI, and register validated release blocks into `config/releases.psd1`.
+- **1-Click Hardware Test & Code Promotion (`scripts/dev/test-and-promote.ps1`)**: Automated release promotion via `setup.bat test-and-promote -Version <v>`. Provisions an isolated 4-part sandbox (`.test-env\`) with Python, ROCm wheels, matching Triton, and linked Portable MSVC (`.\msvc\`), runs the full physical AMD GPU hardware verification suite (GEMM FP16, Conv2d latency, BatchNorm2d, F.normalize autograd, and Triton JIT compilation), promotes `DefaultRelease`, documents packages in CHANGELOG.md, and creates git release branches.
+- **Maintainer CLI Command Routing (`setup.bat`)**: Added native command routing for `stage-release` and `test-and-promote` with dedicated individual help screens (`setup.bat help stage-release`, `setup.bat help test-and-promote`).
+
 ## [0.4.1] - 2026-11-05
 
 ### Added

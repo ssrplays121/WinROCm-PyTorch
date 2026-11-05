@@ -479,6 +479,14 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         # diagnose help
         $outDiag = cmd.exe /c "$setupBat diagnose help"
         ($outDiag -join "`n") | Should -Match "WinROCm Command Help: DIAGNOSE"
+
+        # stage-release help
+        $outStage = cmd.exe /c "$setupBat stage-release help"
+        ($outStage -join "`n") | Should -Match "WinROCm Command Help: STAGE-RELEASE"
+
+        # test-and-promote help
+        $outProm = cmd.exe /c "$setupBat test-and-promote help"
+        ($outProm -join "`n") | Should -Match "WinROCm Command Help: TEST-AND-PROMOTE"
     }
 
     It "setup.bat with an unknown command exits with code 1 and error message" {
@@ -664,5 +672,76 @@ Describe "ROCm Portable - Pip Bootstrapping Resilience & Authoritative Resolutio
         $res = Resolve-OfficialGetPipSha256 -ActualSha $forgedSha
         # Cryptographic check must reject forged payload regardless of header comments
         $res.Verified | Should -Be $false
+    }
+}
+
+Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
+    It "scripts/dev/stage-release.ps1 exists and handles -Help cleanly" {
+        $stageScript = Join-Path $script:repoRoot "scripts\dev\stage-release.ps1"
+        (Test-Path -Path $stageScript) | Should -Be $true
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stageScript -Help
+        $LASTEXITCODE | Should -Be 0
+        $text = ($output -join "`n")
+        $text | Should -Match "WINROCM RELEASE STAGER & SCRAPER"
+        $text | Should -Match "-Version"
+        $text | Should -Match "-CheckOnly"
+    }
+
+    It "scripts/dev/stage-release.ps1 fails with exit code 1 when -Version is omitted" {
+        $stageScript = Join-Path $script:repoRoot "scripts\dev\stage-release.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stageScript 2>&1
+        $LASTEXITCODE | Should -Be 1
+        $text = ($output -join "`n")
+        $text | Should -Match "Missing mandatory parameter: -Version is required"
+    }
+
+    It "scripts/dev/test-and-promote.ps1 exists and handles -Help cleanly" {
+        $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
+        (Test-Path -Path $promoteScript) | Should -Be $true
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $promoteScript -Help
+        $LASTEXITCODE | Should -Be 0
+        $text = ($output -join "`n")
+        $text | Should -Match "WINROCM 1-CLICK HARDWARE TEST & PROMOTION"
+        $text | Should -Match "-Version"
+        $text | Should -Match "-KeepSandbox"
+    }
+
+    It "scripts/dev/test-and-promote.ps1 fails with exit code 1 when -Version is omitted" {
+        $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $promoteScript 2>&1
+        $LASTEXITCODE | Should -Be 1
+        $text = ($output -join "`n")
+        $text | Should -Match "Missing mandatory parameter: -Version is required"
+    }
+
+    It "scripts/dev/test-and-promote.ps1 rejects unconfigured release version with exit code 1" {
+        $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $promoteScript -Version 99.9 2>&1
+        $LASTEXITCODE | Should -Be 1
+        $text = ($output -join "`n")
+        $text | Should -Match "Release '99.9' is not configured in config/releases.psd1"
+    }
+
+    It ".github/workflows/url-check.yml is strictly read-only and free of write/push mutations" {
+        $urlCheckYml = Join-Path $script:repoRoot ".github\workflows\url-check.yml"
+        (Test-Path -Path $urlCheckYml) | Should -Be $true
+        $content = Get-Content -Path $urlCheckYml -Raw
+        $content | Should -Match "permissions:\s*\r?\n\s+contents:\s*read"
+        $content | Should -Not -Match "contents:\s*write"
+        $content | Should -Not -Match "git push"
+        $content | Should -Not -Match "git commit"
+    }
+
+    It ".github/workflows/version-watchdog.yml exists, is read-only, and schedules weekly cron" {
+        $watchdogYml = Join-Path $script:repoRoot ".github\workflows\version-watchdog.yml"
+        (Test-Path -Path $watchdogYml) | Should -Be $true
+        $content = Get-Content -Path $watchdogYml -Raw
+        $content | Should -Match "cron:\s*'0 8 \* \* 3'"
+        $content | Should -Match "permissions:\s*\r?\n\s+contents:\s*read"
+        $content | Should -Match "GITHUB_STEP_SUMMARY"
+        $content | Should -Match "::error::"
+        $content | Should -Match "repo\.radeon\.com/rocm/windows"
+        $content | Should -Match "GetPipSha256"
+        $content | Should -Match "triton-windows"
     }
 }

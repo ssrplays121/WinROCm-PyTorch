@@ -1,0 +1,135 @@
+name: ROCm Version Watchdog
+
+on:
+  schedule:
+    # Run every Wednesday at 08:00 UTC
+    - cron: '0 8 * * 3'
+  workflow_dispatch:
+
+jobs:
+  scan-upstream:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan upstream release endpoints & check for drift
+        shell: pwsh
+        run: |
+          $config = Import-PowerShellDataFile -Path .\config\releases.psd1
+          $updatesFound = $false
+          $diffRows = @()
+
+          # 1. Scan AMD ROCm Windows Directory
+          Write-Host "Checking https://repo.radeon.com/rocm/windows/ for new releases..." -ForegroundColor Cyan
+          try {
+              $resp = Invoke-WebRequest -Uri "https://repo.radeon.com/rocm/windows/" -UseBasicParsing -TimeoutSec 15
+              $matches = [regex]::Matches($resp.Content, 'href="rocm-rel-([^"/]+)/"')
+              $discoveredRocm = @($matches | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+              $knownRocm = @($config.Releases.Keys)
+              $newRocm = $discoveredRocm | Where-Object { $_ -notin $knownRocm -and $_ -notmatch '^(6\.|7\.1)' }
+              if ($newRocm) {
+                  $updatesFound = $true
+                  foreach ($nr in $newRocm) {
+                      $diffRows += "| ROCm Release | Current: $($config.DefaultRelease) | Upstream: $nr | **New Release Available** |"
+                  }
+              }
+          } catch {
+              Write-Warning "Failed to query AMD directory: $($_.Exception.Message)"
+              $updatesFound = $true
+              $diffRows += "| AMD Directory | repo.radeon.com/rocm/windows/ | Error: $($_.Exception.Message) | **Endpoint Unreachable** |"
+          }
+
+          # 2. Check get-pip.py SHA-256 Drift (using temporary disk buffering)
+          Write-Host "Checking bootstrap.pypa.io/get-pip.py SHA256..." -ForegroundColor Cyan
+          $tempFile = [System.IO.Path]::GetTempFileName()
+          try {
+              Invoke-WebRequest -Uri $config.GetPipUrl -OutFile $tempFile -UseBasicParsing -TimeoutSec 30
+              $actualSha = (Get-FileHash -Path $tempFile -Algorithm SHA256).Hash.ToUpperInvariant()
+              if ($actualSha -ne $config.GetPipSha256) {
+                  $updatesFound = $true
+                  $diffRows += "| get-pip.py SHA-256 | Pinned: $($config.GetPipSha256.Substring(0,12))... | Actual: $($actualSha.Substring(0,12))... | **Hash Drift Detected** |"
+              }
+          } catch {
+              Write-Warning "Failed to fetch get-pip.py: $($_.Exception.Message)"
+              $updatesFound = $true
+              $diffRows += "| get-pip.py | $($config.GetPipUrl) | Error: $($_.Exception.Message) | **Fetch Failure** |"
+          } finally {
+              Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+          }
+
+          # 3. Check PyPI for pip and triton-windows
+          Write-Host "Checking PyPI for pip and triton-windows..." -ForegroundColor Cyan
+          try {
+              $pypiPip = Invoke-RestMethod -Uri "https://pypi.org/pypi/pip/json" -TimeoutSec 15
+              $latestPip = [string]$pypiPip.info.version
+              if ($latestPip -ne $config.PipVersion) {
+                  $updatesFound = $true
+                  $diffRows += "| pip (PyPI) | Pinned: $($config.PipVersion) | Upstream: $latestPip | **New pip Version** |"
+              }
+
+              $pypiTriton = Invoke-RestMethod -Uri "https://pypi.org/pypi/triton-windows/json" -TimeoutSec 15
+              $latestTriton = [string]$pypiTriton.info.version
+              $diffRows += "| triton-windows | Pinned: >=3.5,<3.6 | Latest Build: $latestTriton | Info |"
+          } catch {
+              Write-Warning "Failed to query PyPI: $($_.Exception.Message)"
+              $updatesFound = $true
+              $diffRows += "| PyPI | pypi.org | Error: $($_.Exception.Message) | **API Failure** |"
+          }
+
+          # 4. Check Microsoft CDN MSVC Channel Manifest
+          Write-Host "Checking Microsoft CDN MSVC channel..." -ForegroundColor Cyan
+          try {
+              $msvcChannel = Invoke-RestMethod -Uri "https://aka.ms/vs/17/release/channel" -TimeoutSec 15
+              $channelId = $msvcChannel.info.id
+              $diffRows += "| MSVC Channel | Pinned: VisualStudio.17.Release | Upstream: $channelId | Active |"
+          } catch {
+              Write-Warning "Failed to query MSVC channel: $($_.Exception.Message)"
+              $updatesFound = $true
+              $diffRows += "| MSVC Channel | aka.ms/vs/17/release/channel | Error: $($_.Exception.Message) | **Endpoint Unreachable** |"
+          }
+
+          # Render Output and Step Summary
+          if ($updatesFound) {
+              $summaryLines = @(
+                  "# 🚨 ROCm Version Watchdog: Upstream Updates Detected",
+                  "",
+                  "The weekly upstream watchdog detected updates or checksum drift.",
+                  "",
+                  "| Component | Pinned / Expected | Upstream Detected | Status |",
+                  "| :--- | :--- | :--- | :--- |"
+              )
+              $summaryLines += $diffRows
+              $summaryLines += @(
+                  "",
+                  "### Recommended Next Steps for Maintainers:",
+                  "Run the automated release staging and hardware verification commands:",
+                  "```cmd",
+                  "setup.bat stage-release -Version <version>",
+                  "setup.bat test-and-promote -Version <version>",
+                  "```"
+              )
+              $summary = $summaryLines -join "`n"
+
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+              }
+              Write-Host "::error::Upstream updates or hash drift detected. Review step summary for details."
+              exit 1
+          } else {
+              $summaryLines = @(
+                  "# ✅ ROCm Version Watchdog: Clean Run",
+                  "All upstream release repositories, pip bootstrap checksums, and package versions match current pinned configuration."
+              )
+              $summary = $summaryLines -join "`n"
+
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+              }
+              Write-Host "All upstream dependencies and release channels are verified up to date." -ForegroundColor Green
+              exit 0
+          }
+
