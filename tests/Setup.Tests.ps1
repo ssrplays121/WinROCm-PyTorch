@@ -689,16 +689,16 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
 
     It "scripts/dev/stage-release.ps1 fails with exit code 1 when -Version is omitted" {
         $stageScript = Join-Path $script:repoRoot "scripts\dev\stage-release.ps1"
-        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stageScript 2>&1
+        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$stageScript`" 2>&1"
         $LASTEXITCODE | Should -Be 1
         $text = ($output -join "`n")
-        $text | Should -Match "Missing mandatory parameter: -Version is required"
+        ($text -replace '\s+', ' ') | Should -Match "Missing mandatory parameter: -Version is required"
     }
 
     It "scripts/dev/test-and-promote.ps1 exists and handles -Help cleanly" {
         $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
         (Test-Path -Path $promoteScript) | Should -Be $true
-        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $promoteScript -Help
+        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" -Help 2>&1"
         $LASTEXITCODE | Should -Be 0
         $text = ($output -join "`n")
         $text | Should -Match "WINROCM 1-CLICK HARDWARE TEST & PROMOTION"
@@ -708,18 +708,18 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
 
     It "scripts/dev/test-and-promote.ps1 fails with exit code 1 when -Version is omitted" {
         $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
-        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $promoteScript 2>&1
+        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" 2>&1"
         $LASTEXITCODE | Should -Be 1
         $text = ($output -join "`n")
-        $text | Should -Match "Missing mandatory parameter: -Version is required"
+        ($text -replace '\s+', ' ') | Should -Match "Missing mandatory parameter: -Version is required"
     }
 
     It "scripts/dev/test-and-promote.ps1 rejects unconfigured release version with exit code 1" {
         $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
-        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $promoteScript -Version 99.9 2>&1
+        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" -Version 99.9 2>&1"
         $LASTEXITCODE | Should -Be 1
         $text = ($output -join "`n")
-        $text | Should -Match "Release '99.9' is not configured in config/releases.psd1"
+        ($text -replace '\s+', ' ') | Should -Match "Release '99.9' is not configured in config/releases.psd1"
     }
 
     It ".github/workflows/url-check.yml is strictly read-only and free of write/push mutations" {

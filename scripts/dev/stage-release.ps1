@@ -56,7 +56,7 @@ if ($Help -or ($Version -in @('-h', '-help', '--help', '/?', 'help', ''))) {
     Write-Host "  -Help, -h         Display this reference."
     Write-Host "==================================================================`n" -ForegroundColor Cyan
     if ([string]::IsNullOrWhiteSpace($Version) -and -not $Help) {
-        Write-Error "Missing mandatory parameter: -Version is required (e.g. -Version 7.3)."
+        [Console]::Error.WriteLine("Missing mandatory parameter: -Version is required (e.g. -Version 7.3).")
         exit 1
     }
     return
@@ -71,7 +71,7 @@ $resolvedRepo = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 
 $configPath = Join-Path $resolvedRepo "config\releases.psd1"
 if (-not (Test-Path -Path $configPath)) {
-    Write-Error "Configuration file not found: $configPath"
+    [Console]::Error.WriteLine("Configuration file not found: $configPath")
     exit 1
 }
 
@@ -92,7 +92,7 @@ try {
     $indexHtml = $resp.Content
     Write-Host "  [OK $($resp.StatusCode)] Successfully retrieved directory index." -ForegroundColor Green
 } catch {
-    Write-Error "Failed to access AMD release endpoint at '$baseUrl/': $($_.Exception.Message)"
+    [Console]::Error.WriteLine("Failed to access AMD release endpoint at '$baseUrl/': $($_.Exception.Message)")
     exit 1
 }
 
@@ -119,7 +119,7 @@ if (-not $discoveredVision) { $missing += "torchvision-*.whl" }
 if (-not $discoveredAudio)  { $missing += "torchaudio-*.whl" }
 
 if ($missing.Count -gt 0) {
-    Write-Error "Incomplete release: Missing $($missing.Count) required file(s) in $baseUrl/:`n  $($missing -join "`n  ")"
+    [Console]::Error.WriteLine("Incomplete release: Missing $($missing.Count) required file(s) in $baseUrl/:`n  $($missing -join "`n  ")")
     exit 1
 }
 
@@ -287,7 +287,7 @@ try {
     Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
     Write-Host "  [OK] Successfully registered release '$cleanVersion' in config/releases.psd1." -ForegroundColor Green
 } catch {
-    Write-Error "Failed to update config/releases.psd1 safely: $($_.Exception.Message). Restoring backup."
+    [Console]::Error.WriteLine("Failed to update config/releases.psd1 safely: $($_.Exception.Message). Restoring backup.")
     if (Test-Path -Path $backupPath) {
         Copy-Item -Path $backupPath -Destination $configPath -Force
         Remove-Item -Path $backupPath -Force

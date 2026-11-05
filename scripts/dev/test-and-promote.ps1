@@ -66,7 +66,7 @@ if ($Help -or ($Version -in @('-h', '-help', '--help', '/?', 'help', ''))) {
     Write-Host "  -Help, -h            Display this reference."
     Write-Host "===================================================================`n" -ForegroundColor Cyan
     if ([string]::IsNullOrWhiteSpace($Version) -and -not $Help) {
-        Write-Error "Missing mandatory parameter: -Version is required (e.g. -Version 7.3)."
+        [Console]::Error.WriteLine("Missing mandatory parameter: -Version is required (e.g. -Version 7.3).")
         exit 1
     }
     return
@@ -81,7 +81,7 @@ $resolvedRepo = if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 
 $configPath = Join-Path $resolvedRepo "config\releases.psd1"
 if (-not (Test-Path -Path $configPath)) {
-    Write-Error "Configuration file not found: $configPath"
+    [Console]::Error.WriteLine("Configuration file not found: $configPath")
     exit 1
 }
 
@@ -90,7 +90,7 @@ $cleanVersion = $Version -replace '^rocm-rel-', ''
 # Validate that release exists in releases.psd1
 $config = Import-PowerShellDataFile -Path $configPath
 if (-not $config.Releases.ContainsKey($cleanVersion)) {
-    Write-Error "Release '$cleanVersion' is not configured in config/releases.psd1.`nPlease run 'setup.bat stage-release -Version $cleanVersion' first to stage the release."
+    [Console]::Error.WriteLine("Release '$cleanVersion' is not configured in config/releases.psd1.`nPlease run 'setup.bat stage-release -Version $cleanVersion' first to stage the release.")
     exit 1
 }
 
@@ -153,7 +153,7 @@ Write-Host "  [OK] Sandbox environment successfully provisioned." -ForegroundCol
 # Step 4: Physical AMD GPU Hardware Verification
 $verifyBat = Join-Path $sandboxDir "bin\verify_rocm.bat"
 if (-not (Test-Path -Path $verifyBat)) {
-    Write-Error "Verification launcher not found in sandbox: $verifyBat"
+    [Console]::Error.WriteLine("Verification launcher not found in sandbox: $verifyBat")
     exit 1
 }
 
@@ -196,7 +196,7 @@ $cfgRaw = $cfgRaw -replace "DefaultRelease\s*=\s*['`"][^'`"]+['`"]", "DefaultRel
 Set-Content -Path $configPath -Value $cfgRaw -Encoding utf8
 $verifiedConfig = Import-PowerShellDataFile -Path $configPath
 if ($verifiedConfig.DefaultRelease -ne $cleanVersion) {
-    Write-Error "Failed to set DefaultRelease to '$cleanVersion' in config/releases.psd1."
+    [Console]::Error.WriteLine("Failed to set DefaultRelease to '$cleanVersion' in config/releases.psd1.")
     exit 1
 }
 Write-Host "  [OK] DefaultRelease updated to '$cleanVersion'." -ForegroundColor Green
