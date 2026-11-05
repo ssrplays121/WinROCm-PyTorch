@@ -615,7 +615,7 @@ if (($installedPackages.ContainsKey('triton-windows') -and $installedPackages['t
 if (Test-Path -Path (Join-Path $msvcDir "setup_x64.bat")) { $components += "msvc" }
 
 $newState = [ordered]@{
-    scriptVersion  = "0.4.1"
+    scriptVersion  = "0.5.0"
     rocmRelease    = $candidateRelease
     pythonVersion  = [string]$activeConfig['PythonVersion']
     torchVersion   = $installedTorchVer

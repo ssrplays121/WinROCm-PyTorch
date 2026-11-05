@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-06
+
+### Added
+- **ROCm 7.2.1 Promotion**: Promoted `DefaultRelease` to `7.2.1` in `config/releases.psd1` with verified AMD ROCm 7.2.1 SDK wheels and PyTorch 2.9.1+rocm7.2.1 runtime.
+- **Python 3.12.10 Runtime Upgrade**: Upgraded embeddable Python runtime to `3.12.10` with verified SHA-256 checksums for both `python-3.12.10-embed-amd64.zip` and `dev.msi` C/C++ headers.
+- **Packaging Toolchain Modernization**: Pinned `setuptools` to `84.2.1` and confirmed `pip` `26.3` / `wheel` `0.48.0` up to date.
+- **Explicit Triton Release Pinning**: Pinned compatible `triton-windows` `3.5.1.post24` in `config/releases.psd1` for deterministic candidate resolution.
+
+### Fixed
+- **PowerShell Native Argument Quote-Stripping SyntaxError**: Replaced command-line `-c` execution in `scripts/update.ps1` with standard input piping (`$constraintsPy | & $pythonExe -`), preventing Windows PowerShell 5.1 from stripping internal double quotes and eliminating the `SyntaxError: invalid syntax. Perhaps you forgot a comma?` crash during constraints generation.
+- **Triton-Windows False "Upgrade Available" Detection**: Replaced hardcoded `IsUpgrade = $true` in `scripts/update.ps1` with accurate version comparison against candidate/PyPI matching wheels, correctly recognizing `3.5.1.post24` as `[Up to date]`.
+
 ## [0.5.0] - 2026-11-05
 
 ### Added

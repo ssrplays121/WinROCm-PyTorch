@@ -30,8 +30,8 @@ Describe "ROCm Portable - Release Configuration" {
     It "config/releases.psd1 parses successfully with Import-PowerShellDataFile" {
         $config = Import-PowerShellDataFile -Path $script:configPath
         $config | Should -Not -BeNullOrEmpty
-        $config.DefaultRelease | Should -Be '7.2'
-        $config.PythonVersion | Should -Be '3.12.8'
+        $config.DefaultRelease | Should -Be '7.2.1'
+        $config.PythonVersion | Should -Be '3.12.10'
         $config.PythonSha256 | Should -Not -BeNullOrEmpty
         $config.PythonDevMsiUrl | Should -Not -BeNullOrEmpty
         $config.PythonDevMsiSha256 | Should -Not -BeNullOrEmpty
@@ -77,8 +77,8 @@ Describe "ROCm Portable - Get-ReleaseConfig" {
     It "Resolves the default release when none is specified" {
         $config = Import-PowerShellDataFile -Path $script:configPath
         $res = Get-ReleaseConfig -Config $config -RequestedRelease ""
-        $res.Name | Should -Be '7.2'
-        $res.Config.BaseUrl | Should -Be 'https://repo.radeon.com/rocm/windows/rocm-rel-7.2'
+        $res.Name | Should -Be '7.2.1'
+        $res.Config.BaseUrl | Should -Be 'https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1'
     }
 
     It "Resolves an explicit release version" {

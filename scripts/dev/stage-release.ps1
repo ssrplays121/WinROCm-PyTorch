@@ -269,6 +269,7 @@ if ($existingConfig.Releases.ContainsKey($cleanVersion)) {
             Torch     = '$discoveredTorch'
             Vision    = '$discoveredVision'
             Audio     = '$discoveredAudio'
+            Triton    = '$matchingTriton'
         }
 "@
     $cfgRaw = $cfgRaw -replace $pattern, $newEntry
@@ -286,6 +287,7 @@ if ($existingConfig.Releases.ContainsKey($cleanVersion)) {
             Torch     = '$discoveredTorch'
             Vision    = '$discoveredVision'
             Audio     = '$discoveredAudio'
+            Triton    = '$matchingTriton'
         }
     }
 "@

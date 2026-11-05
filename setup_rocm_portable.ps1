@@ -112,7 +112,7 @@ if (-not (Get-Command Import-PowerShellDataFile -ErrorAction SilentlyContinue)) 
     }
 }
 
-$Script:Version = "0.3.0"
+$Script:Version = "0.5.0"
 
 # Custom Exception for mapped exit codes
 class SetupException : System.Exception {

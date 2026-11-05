@@ -294,7 +294,7 @@ You can customize the installer by passing parameters to `setup.bat` or `setup_r
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `-InstallDir <path>` | String | Script directory | Target directory for the portable installation. |
-| `-RocmRelease <ver>` | String | `7.2` | ROCm release track (`7.2` or `7.2.1`). |
+| `-RocmRelease <ver>` | String | `7.2.1` | ROCm release track (`7.2` or `7.2.1`). Defaults to `7.2.1`. |
 | `-WithTriton` | Switch | Off | Installs version-matched `triton-windows` for `torch.compile` support. |
 | `-Reinstall` | Switch | Off | Wipes existing Python environment and performs a fresh clean install. |
 | `-NoVision` | Switch | Off | Skips downloading and installing `torchvision`. |
