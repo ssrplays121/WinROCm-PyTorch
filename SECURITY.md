@@ -12,6 +12,7 @@ During installation and dry-run execution, the script contacts the following off
 | `bootstrap.pypa.io` | Downloads the official `get-pip.py` bootstrapper. Verified against SHA256 in `config/releases.psd1`. |
 | `repo.radeon.com` | Downloads official AMD ROCm SDK wheels (`rocm_sdk_core`, `rocm_sdk_devel`, `rocm_sdk_libraries_custom`, `rocm-*.tar.gz`) and official AMD PyTorch wheels (`torch`, `torchvision`, `torchaudio`). |
 | `pypi.org` / `files.pythonhosted.org` | Downloads wheel dependencies for PyTorch (e.g. `filelock`, `jinja2`, `networkx`, `sympy`, `pillow`, `numpy`). |
+| `aka.ms` / `download.visualstudio.microsoft.com` | Downloads official Microsoft standalone MSVC compiler and Windows SDK CAB payloads (`scripts/portable-msvc.py`). Verified against SHA256 in Microsoft release channel manifest. |
 
 ## Package Build Notice
 

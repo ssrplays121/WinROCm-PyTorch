@@ -16,6 +16,8 @@ param(
     [Alias("y")]
     [switch]$Yes,
     [switch]$WithTriton,
+    [switch]$WithMsvc,
+    [switch]$NoMsvc,
     [Alias("h")]
     [switch]$Help
 )
@@ -34,6 +36,8 @@ if ($Help -or ($InstallDir -in @('-h', '-help', '--help', '/?', 'help'))) {
     Write-Host "  -CheckOnly        Preview candidate updates without downloading or modifying files."
     Write-Host "  -y, -Yes          Unattended mode: automatically apply updates without prompting."
     Write-Host "  -WithTriton       Include matching triton-windows wheel for torch.compile support."
+    Write-Host "  -WithMsvc         Install or verify lightweight portable MSVC in .\msvc (~130 MB)."
+    Write-Host "  -NoMsvc           Skip portable MSVC installation even if Triton is requested."
     Write-Host "  -RocmRelease <v>  Target specific release version track (e.g. 7.2, 7.2.1)."
     Write-Host "  -Help, -h         Display this help information."
     Write-Host "======================================================================`n" -ForegroundColor Cyan
@@ -59,6 +63,7 @@ $pythonExe       = Join-Path $pythonDir "python.exe"
 $constraintsFile = Join-Path $repoRoot "constraints-rocm.txt"
 $templateDir     = Join-Path $repoRoot "templates"
 $binDir          = Join-Path $repoRoot "bin"
+$msvcDir         = Join-Path $repoRoot "msvc"
 $tmpDir          = Join-Path $repoRoot ".tmp"
 $cacheDir        = Join-Path $repoRoot ".cache"
 
@@ -262,6 +267,50 @@ if ($curTriton -ne "None" -or $WithTriton) {
     }
 }
 
+# Portable MSVC Toolchain detection
+$hasPortableMsvc = Test-Path -Path (Join-Path $msvcDir "setup_x64.bat")
+$hasSystemMsvc = $false
+$progRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432) | Where-Object { -not [string]::IsNullOrEmpty($_) } | Select-Object -Unique
+foreach ($r in $progRoots) {
+    $msvcMatches = Get-ChildItem -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\include\type_traits") -ErrorAction SilentlyContinue
+    if ($msvcMatches) {
+        $hasSystemMsvc = $true
+        break
+    }
+}
+$hasAnyMsvc = $hasPortableMsvc -or $hasSystemMsvc
+
+# Check if MSVC should be offered or upgraded
+$wantMsvc = $false
+if (-not $NoMsvc) {
+    if ($WithMsvc) {
+        $wantMsvc = $true
+    } elseif ($curTriton -ne "None" -or $WithTriton) {
+        if (-not $hasAnyMsvc) {
+            $wantMsvc = $true
+        }
+    }
+}
+
+$curMsvc = if ($hasPortableMsvc) {
+    "Installed (.\msvc)"
+} elseif ($hasSystemMsvc) {
+    "System Visual Studio"
+} else {
+    "[Not Installed]"
+}
+
+if ($hasPortableMsvc -or $wantMsvc -or $WithMsvc) {
+    $candMsvc = if ($hasPortableMsvc) { "Installed (.\msvc)" } else { "portable MSVC (~130 MB)" }
+    $diffItems += [PSCustomObject]@{
+        Package   = "Portable MSVC Toolchain"
+        Current   = $curMsvc
+        Candidate = $candMsvc
+        IsUpgrade = ($wantMsvc -and -not $hasPortableMsvc)
+        Type      = "Toolchain"
+    }
+}
+
 # 7. Render Linux Package Manager Status Table
 $upgradableItems = @($diffItems | Where-Object { $_.IsUpgrade })
 
@@ -332,17 +381,74 @@ $env:PIP_CONFIG_FILE             = "NUL"
 $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 $env:PIP_CONSTRAINT              = $null
 
+# Configure Portable MSVC environment if present (ROCm / Triton acceleration)
+$msvcSetupBat = Join-Path $msvcDir "setup_x64.bat"
+if (Test-Path -Path $msvcSetupBat) {
+    try {
+        $msvcEnv = cmd.exe /c "call `"$msvcSetupBat`" >nul 2>&1 && set"
+        foreach ($line in $msvcEnv) {
+            $eqIdx = $line.IndexOf('=')
+            if ($eqIdx -gt 0) {
+                $k = $line.Substring(0, $eqIdx)
+                $v = $line.Substring($eqIdx + 1)
+                if ($k -in @("PATH", "INCLUDE", "LIB", "DISTUTILS_USE_SDK", "MSSdk", "VCToolsInstallDir", "WindowsSDKVersion")) {
+                    [Environment]::SetEnvironmentVariable($k, $v, "Process")
+                }
+            }
+        }
+        if ($env:INCLUDE) {
+            $env:CPATH = $env:INCLUDE -replace '\\', '/'
+        }
+    } catch {
+        Write-Warning "Could not inject existing Portable MSVC environment: $($_.Exception.Message)"
+    }
+}
+
+# Install Portable MSVC Toolchain if requested or upgrading
+$msvcItem = $upgradableItems | Where-Object { $_.Package -eq "Portable MSVC Toolchain" }
+if ($msvcItem -or ($WithMsvc -and -not (Test-Path -Path $msvcSetupBat))) {
+    Write-Host "`n[1/5] Installing lightweight Portable MSVC toolchain (~130 MB download)..." -ForegroundColor Yellow
+    $portableMsvcScript = Join-Path $repoRoot "scripts\portable-msvc.py"
+    if (Test-Path -Path $portableMsvcScript) {
+        & $pythonExe $portableMsvcScript --accept-license --output $msvcDir --target x64 --host x64
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to install Portable MSVC toolchain."
+            return
+        }
+        # Immediately activate MSVC environment for subsequent steps
+        if (Test-Path -Path $msvcSetupBat) {
+            $msvcEnv = cmd.exe /c "call `"$msvcSetupBat`" >nul 2>&1 && set"
+            foreach ($line in $msvcEnv) {
+                $eqIdx = $line.IndexOf('=')
+                if ($eqIdx -gt 0) {
+                    $k = $line.Substring(0, $eqIdx)
+                    $v = $line.Substring($eqIdx + 1)
+                    if ($k -in @("PATH", "INCLUDE", "LIB", "DISTUTILS_USE_SDK", "MSSdk", "VCToolsInstallDir", "WindowsSDKVersion")) {
+                        [Environment]::SetEnvironmentVariable($k, $v, "Process")
+                    }
+                }
+            }
+            if ($env:INCLUDE) {
+                $env:CPATH = $env:INCLUDE -replace '\\', '/'
+            }
+        }
+        Write-Host "  [Pass] Portable MSVC toolchain installed and activated." -ForegroundColor Green
+    } else {
+        Write-Warning "Could not find scripts\portable-msvc.py in $repoRoot."
+    }
+}
+
 # Upgrade Pip if required
 $pipItem = $upgradableItems | Where-Object { $_.Package -eq "pip" }
 if ($pipItem) {
-    Write-Host "`n[1/4] Upgrading pip to $($pipItem.Candidate)..." -ForegroundColor Yellow
+    Write-Host "`n[2/5] Upgrading pip to $($pipItem.Candidate)..." -ForegroundColor Yellow
     & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 "pip==$($pipItem.Candidate)"
 }
 
 # Upgrade ROCm SDK Packages and Metapackage
 $sdkItems = @($upgradableItems | Where-Object { $_.Type -eq "ROCm SDK" -and $_.WheelUrl })
 if ($sdkItems.Count -gt 0) {
-    Write-Host "`n[2/4] Upgrading ROCm SDK packages and metapackage..." -ForegroundColor Yellow
+    Write-Host "`n[3/5] Upgrading ROCm SDK packages and metapackage..." -ForegroundColor Yellow
     $sdkUrls = @($sdkItems | ForEach-Object { $_.WheelUrl })
     & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 --upgrade --no-deps @sdkUrls
     if ($LASTEXITCODE -ne 0) {
@@ -358,13 +464,42 @@ if ($sdkItems.Count -gt 0) {
 # Upgrade PyTorch Wheels
 $torchItems = @($upgradableItems | Where-Object { $_.Type -eq "PyTorch" -and $_.WheelUrl })
 if ($torchItems.Count -gt 0) {
-    Write-Host "`n[3/4] Upgrading PyTorch wheels..." -ForegroundColor Yellow
+    Write-Host "`n[4/5] Upgrading PyTorch wheels..." -ForegroundColor Yellow
     $torchUrls = @($torchItems | ForEach-Object { $_.WheelUrl })
     & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 --upgrade --no-deps @torchUrls
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to install PyTorch upgrades."
         return
     }
+}
+
+# Upgrade / Install Triton if requested or upgrading
+$tritonItem = $upgradableItems | Where-Object { $_.Package -eq "triton-windows" }
+if ($tritonItem -or $WithTriton) {
+    Write-Host "`n[5/5] Installing/Upgrading triton-windows..." -ForegroundColor Yellow
+    $torchMinor = if ($installedPackages.ContainsKey('torch') -and $installedPackages['torch'] -ne "None") {
+        $tv = $installedPackages['torch'].Split('.')
+        "$($tv[0]).$($tv[1])"
+    } else {
+        $candTorch = Get-WheelVersion -Filename $candCfg['Torch']
+        $tv = $candTorch.Split('.')
+        "$($tv[0]).$($tv[1])"
+    }
+    $tritonSpec = switch ($torchMinor) {
+        "2.6"  { "triton-windows>=3.2,<3.3" }
+        "2.7"  { "triton-windows>=3.3,<3.4" }
+        "2.8"  { "triton-windows>=3.4,<3.5" }
+        "2.9"  { "triton-windows>=3.5,<3.6" }
+        "2.10" { "triton-windows>=3.6,<3.7" }
+        "2.11" { "triton-windows>=3.6,<3.7" }
+        "2.12" { "triton-windows>=3.7,<3.8" }
+        "2.13" { "triton-windows>=3.7,<3.8" }
+        "2.14" { "triton-windows>=3.8,<3.9" }
+        "2.15" { "triton-windows>=3.8,<3.9" }
+        default { "triton-windows>=3.8,<3.10" }
+    }
+    Write-Host "  Resolved triton-windows specification for PyTorch $($torchMinor): $tritonSpec" -ForegroundColor Cyan
+    & $pythonExe -m pip install --no-warn-script-location --retries 5 --timeout 60 $tritonSpec
 }
 
 # Persist updated catalog to disk now that upgrade is confirmed
@@ -374,7 +509,7 @@ if ($null -ne $remoteUpdatedText) {
 }
 
 # Refresh Launchers and Shims
-Write-Host "`n[4/4] Refreshing launchers, runtime shims, and environment constraints..." -ForegroundColor Yellow
+Write-Host "`nRefresh launchers, runtime shims, and environment constraints..." -ForegroundColor Yellow
 
 # Copy templates to bin/
 if (Test-Path -Path $templateDir) {
@@ -424,10 +559,11 @@ try {
 $components = @("torch")
 if ($installedPackages.ContainsKey('torchvision') -and $installedPackages['torchvision'] -ne "None") { $components += "torchvision" }
 if ($installedPackages.ContainsKey('torchaudio') -and $installedPackages['torchaudio'] -ne "None") { $components += "torchaudio" }
-if ($installedPackages.ContainsKey('triton-windows') -and $installedPackages['triton-windows'] -ne "None") { $components += "triton-windows" }
+if (($installedPackages.ContainsKey('triton-windows') -and $installedPackages['triton-windows'] -ne "None") -or $tritonItem -or $WithTriton) { $components += "triton-windows" }
+if (Test-Path -Path (Join-Path $msvcDir "setup_x64.bat")) { $components += "msvc" }
 
 $newState = [ordered]@{
-    scriptVersion  = "0.3.0"
+    scriptVersion  = "0.4.1"
     rocmRelease    = $candidateRelease
     pythonVersion  = [string]$activeConfig['PythonVersion']
     torchVersion   = $installedTorchVer

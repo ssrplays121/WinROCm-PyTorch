@@ -226,6 +226,8 @@ echo Options:
 echo   -y, -Yes            Non-interactive mode: automatically apply all available upgrades.
 echo   -CheckOnly          Preview available updates without applying (same as check-update).
 echo   -WithTriton         Ensure triton-windows is included during the upgrade.
+echo   -WithMsvc           Install or verify lightweight portable MSVC in .\msvc (~130 MB).
+echo   -NoMsvc             Skip portable MSVC installation even if Triton is requested.
 echo   -RocmRelease ^<ver^>  Target explicit ROCm release version track.
 echo   help, -h, --help    Display this help message.
 echo.
@@ -476,7 +478,7 @@ echo.
 if "!HAS_INSTALL!"=="0" goto do_first_install
 
 echo [INFO] An existing WinROCm installation is already present in this directory.
-if "!HAS_TRITON!"=="1" goto skip_install_triton_prompt
+if "!HAS_TRITON!"=="1" goto check_install_msvc_prompt
 
 echo.
 echo Triton Support is currently NOT INSTALLED [torch.compile disabled].
@@ -485,6 +487,23 @@ set /p "ADD_TRITON=Would you like to install Triton (triton-windows) now? [y/N]:
 if /i "!ADD_TRITON!"=="y" (
     echo.
     set "REST_ARGS=-WithTriton"
+    call :do_update
+    echo.
+    echo Press any key to return to the main menu...
+    pause >nul
+    goto menu_loop
+)
+
+:check_install_msvc_prompt
+if "!HAS_MSVC!"=="1" goto skip_install_triton_prompt
+
+echo.
+echo Portable MSVC is currently NOT INSTALLED [safe eager ATen fallback].
+set "ADD_MSVC="
+set /p "ADD_MSVC=Would you like to install Portable MSVC (~130 MB) for C++ acceleration? [y/N]: "
+if /i "!ADD_MSVC!"=="y" (
+    echo.
+    set "REST_ARGS=-WithMsvc"
     call :do_update
     echo.
     echo Press any key to return to the main menu...
@@ -607,16 +626,29 @@ goto menu_loop
 echo.
 call :help_triton
 if "!HAS_INSTALL!"=="0" goto menu_action_triton_done
-if "!HAS_TRITON!"=="1" goto menu_action_triton_done
 
-echo.
-echo --------------------------------------------------------------------------------
-set "INSTALL_TRITON_NOW="
-set /p "INSTALL_TRITON_NOW=Would you like to install Triton (triton-windows) now? [y/N]: "
-if /i "!INSTALL_TRITON_NOW!"=="y" (
+if "!HAS_TRITON!"=="0" (
     echo.
-    set "REST_ARGS=-WithTriton"
-    call :do_update
+    echo --------------------------------------------------------------------------------
+    set "INSTALL_TRITON_NOW="
+    set /p "INSTALL_TRITON_NOW=Would you like to install Triton (triton-windows) now? [y/N]: "
+    if /i "!INSTALL_TRITON_NOW!"=="y" (
+        echo.
+        set "REST_ARGS=-WithTriton"
+        call :do_update
+    )
+)
+
+if "!HAS_MSVC!"=="0" (
+    echo.
+    echo --------------------------------------------------------------------------------
+    set "INSTALL_MSVC_NOW="
+    set /p "INSTALL_MSVC_NOW=Would you like to install Portable MSVC (~130 MB) now? [y/N]: "
+    if /i "!INSTALL_MSVC_NOW!"=="y" (
+        echo.
+        set "REST_ARGS=-WithMsvc"
+        call :do_update
+    )
 )
 
 :menu_action_triton_done

@@ -423,8 +423,8 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
 
     It "setup.bat action 8 displays Triton guide and returns to main menu" {
         $setupBat = Join-Path $script:repoRoot "setup.bat"
-        # Select action 8 (Triton info), decline install (n), then abort (0)
-        $output = cmd.exe /c "(echo 8 & echo n & echo 0) | $setupBat"
+        # Select action 8 (Triton info), decline Triton (n), decline MSVC (n), then abort (0)
+        $output = cmd.exe /c "(echo 8 & echo n & echo n & echo 0) | $setupBat"
         $text = ($output -join "`n")
         $text | Should -Match "TRITON & TORCH\.COMPILE ACCELERATION"
         $text | Should -Match "torch\.compile"
@@ -457,6 +457,8 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $outUpd = cmd.exe /c "$setupBat update --help"
         ($outUpd -join "`n") | Should -Match "WinROCm Command Help: UPDATE"
         ($outUpd -join "`n") | Should -Match "Linux Package Manager Workflow"
+        ($outUpd -join "`n") | Should -Match "-WithMsvc"
+        ($outUpd -join "`n") | Should -Match "-NoMsvc"
 
         # check-update help
         $outChk = cmd.exe /c "$setupBat check-update help"
@@ -520,6 +522,16 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $LASTEXITCODE | Should -Be 0
         $text = ($output -join "`n")
         $text | Should -Match "WINROCM PACKAGE MANAGER: UPDATE HELP"
+        $text | Should -Match "-WithMsvc"
+        $text | Should -Match "-NoMsvc"
+    }
+
+    It "scripts/update.ps1 handles -WithMsvc and -NoMsvc parameters without error" {
+        $updateScript = Join-Path $script:repoRoot "scripts\update.ps1"
+        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updateScript -InstallDir $script:repoRoot -CheckOnly -WithMsvc
+        $LASTEXITCODE | Should -Be 0
+        $text = ($output -join "`n")
+        $text | Should -Match "Portable MSVC Toolchain"
     }
 
     It "setup_rocm_portable.ps1 handles -Help cleanly" {

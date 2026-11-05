@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-05
+
+### Added
+- **Portable MSVC Update Engine Integration (`scripts/update.ps1`)**: Added `-WithMsvc` and `-NoMsvc` parameters to the package manager update engine, enabling existing installations to install or verify the lightweight Portable MSVC toolchain (`.\msvc\`) without requiring a clean reinstall.
+- **Dynamic Toolchain Injection for Updates**: Automatically detects `<InstallDir>\msvc\setup_x64.bat` and injects MSVC compiler binaries into `PATH`, `INCLUDE`, `LIB`, forward-slashed `CPATH`, and `DISTUTILS_USE_SDK=1` during update sessions.
+- **Interactive 1-Click MSVC Onboarding (`setup.bat`)**: Added interactive upgrade prompts in menu actions `[2] Update` and `[8] Triton Info` allowing users to add Portable MSVC with a single keystroke.
+- **Microsoft CDN Security Policy Coverage**: Added Microsoft's official Visual Studio CDN (`aka.ms` and `download.visualstudio.microsoft.com`) to the authorized network endpoints table in `SECURITY.md`.
+- **Release Channel CI Reachability Monitoring**: Added Microsoft Visual Studio release channel manifest (`https://aka.ms/vs/17/release/channel`) to `.github/workflows/url-check.yml` to ensure continuous reachability monitoring.
+
 ## [0.4.0] - 2026-11-05
 
 ### Added

@@ -23,7 +23,8 @@ jobs:
           $urls = @(
               $config.PythonZipUrl,
               $config.PythonDevMsiUrl,
-              $config.GetPipUrl
+              $config.GetPipUrl,
+              "https://aka.ms/vs/17/release/channel"
           )
 
           foreach ($relKey in $config.Releases.Keys) {
