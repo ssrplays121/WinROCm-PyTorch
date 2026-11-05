@@ -38,6 +38,23 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
+# Polyfill Import-PowerShellDataFile for Windows PowerShell 5.1 environments where the cmdlet is not built-in
+if (-not (Get-Command Import-PowerShellDataFile -ErrorAction SilentlyContinue)) {
+    function global:Import-PowerShellDataFile {
+        param([string]$Path)
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$parseErrors)
+        if ($parseErrors -and $parseErrors.Count -gt 0) {
+            throw "Failed to parse data file at $Path : $($parseErrors[0].Message)"
+        }
+        $data = $ast.Find({ $args[0] -is [System.Management.Automation.Language.HashtableAst] }, $false)
+        if ($data) {
+            return $data.SafeGetValue()
+        }
+        throw "No hashtable root found in data file: $Path"
+    }
+}
+
 if ($Help -or ($Version -in @('-h', '-help', '--help', '/?', 'help', ''))) {
     Write-Host "`n================ WINROCM RELEASE STAGER & SCRAPER ================" -ForegroundColor Cyan
     Write-Host "Usage:"

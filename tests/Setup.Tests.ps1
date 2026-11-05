@@ -12,6 +12,7 @@ BeforeAll {
     $script:scriptPath = Join-Path $script:repoRoot "setup_rocm_portable.ps1"
     $script:configPath = Join-Path $script:repoRoot "config\releases.psd1"
     $script:templateDir = Join-Path $script:repoRoot "templates"
+    $script:psExe = (Get-Process -Id $PID).Path
 
     # Dot-source the script to load its functions without executing Main
     . $script:scriptPath
@@ -679,7 +680,7 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
     It "scripts/dev/stage-release.ps1 exists and handles -Help cleanly" {
         $stageScript = Join-Path $script:repoRoot "scripts\dev\stage-release.ps1"
         (Test-Path -Path $stageScript) | Should -Be $true
-        $output = powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stageScript -Help
+        $output = cmd.exe /c "`"$($script:psExe)`" -NoProfile -ExecutionPolicy Bypass -File `"$stageScript`" -Help 2>&1"
         $LASTEXITCODE | Should -Be 0
         $text = ($output -join "`n")
         $text | Should -Match "WINROCM RELEASE STAGER & SCRAPER"
@@ -689,7 +690,7 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
 
     It "scripts/dev/stage-release.ps1 fails with exit code 1 when -Version is omitted" {
         $stageScript = Join-Path $script:repoRoot "scripts\dev\stage-release.ps1"
-        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$stageScript`" 2>&1"
+        $output = cmd.exe /c "`"$($script:psExe)`" -NoProfile -ExecutionPolicy Bypass -File `"$stageScript`" 2>&1"
         $LASTEXITCODE | Should -Be 1
         $text = ($output -join "`n")
         ($text -replace '\s+', ' ') | Should -Match "Missing mandatory parameter: -Version is required"
@@ -698,7 +699,7 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
     It "scripts/dev/test-and-promote.ps1 exists and handles -Help cleanly" {
         $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
         (Test-Path -Path $promoteScript) | Should -Be $true
-        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" -Help 2>&1"
+        $output = cmd.exe /c "`"$($script:psExe)`" -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" -Help 2>&1"
         $LASTEXITCODE | Should -Be 0
         $text = ($output -join "`n")
         $text | Should -Match "WINROCM 1-CLICK HARDWARE TEST & PROMOTION"
@@ -708,7 +709,7 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
 
     It "scripts/dev/test-and-promote.ps1 fails with exit code 1 when -Version is omitted" {
         $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
-        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" 2>&1"
+        $output = cmd.exe /c "`"$($script:psExe)`" -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" 2>&1"
         $LASTEXITCODE | Should -Be 1
         $text = ($output -join "`n")
         ($text -replace '\s+', ' ') | Should -Match "Missing mandatory parameter: -Version is required"
@@ -716,7 +717,7 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
 
     It "scripts/dev/test-and-promote.ps1 rejects unconfigured release version with exit code 1" {
         $promoteScript = Join-Path $script:repoRoot "scripts\dev\test-and-promote.ps1"
-        $output = cmd.exe /c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" -Version 99.9 2>&1"
+        $output = cmd.exe /c "`"$($script:psExe)`" -NoProfile -ExecutionPolicy Bypass -File `"$promoteScript`" -Version 99.9 2>&1"
         $LASTEXITCODE | Should -Be 1
         $text = ($output -join "`n")
         ($text -replace '\s+', ' ') | Should -Match "Release '99.9' is not configured in config/releases.psd1"

@@ -95,6 +95,23 @@ $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Import-Module Microsoft.PowerShell.Utility -ErrorAction SilentlyContinue
 
+# Polyfill Import-PowerShellDataFile for Windows PowerShell 5.1 environments where the cmdlet is not built-in
+if (-not (Get-Command Import-PowerShellDataFile -ErrorAction SilentlyContinue)) {
+    function global:Import-PowerShellDataFile {
+        param([string]$Path)
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$parseErrors)
+        if ($parseErrors -and $parseErrors.Count -gt 0) {
+            throw "Failed to parse data file at $Path : $($parseErrors[0].Message)"
+        }
+        $data = $ast.Find({ $args[0] -is [System.Management.Automation.Language.HashtableAst] }, $false)
+        if ($data) {
+            return $data.SafeGetValue()
+        }
+        throw "No hashtable root found in data file: $Path"
+    }
+}
+
 $Script:Version = "0.3.0"
 
 # Custom Exception for mapped exit codes
