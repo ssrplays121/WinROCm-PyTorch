@@ -209,14 +209,36 @@ Because PyPI's official repository indexes CUDA and CPU wheels by default, stand
 
 ---
 
-## 7. Triton for Windows (`torch.compile`)
+## 7. Triton for Windows (`torch.compile`) & Portable MSVC Toolchain
 
 `torch.compile` requires Triton to lower PyTorch computation graphs into high-performance GPU kernels. Triton historically lacked native Windows support, but community pre-built wheels (`triton-windows`) provide Windows-native JIT acceleration.
 
-When the `-WithTriton` flag is supplied during setup:
-1. WinROCm-PyTorch evaluates the installed PyTorch version.
-2. It selects the matched `triton-windows` release track from PyPI.
-3. The Triton kernel compilation cache is automatically isolated into `<InstallDir>\.cache\triton`.
+### The MSVC Compiler Requirement
+Both Triton and PyTorch Inductor require a C++ compiler (`cl.exe`), C++ STL headers (`<type_traits>`, `<vector>`), and Windows SDK UCRT headers/libraries (`<stdio.h>`, `ucrt.lib`, `kernel32.lib`):
+1. **PyTorch Inductor**: Generates C++ wrappers and CPU kernels using `cl.exe`. Without a C++ compiler, `torch.compile` fails with `torch._inductor.exc.BackendCompilerFailed` or `CppCompileError`.
+2. **Triton JIT**: Generates and compiles C launcher stubs using `cl.exe`.
+3. **MIOpen JIT**: Requires standard C++ STL headers (`<type_traits>`) for BatchNorm and Conv2d hardware kernels.
+
+### Lightweight Portable MSVC Toolchain (`.\msvc\`)
+Instead of forcing users to install the 4–60 GB Visual Studio IDE with administrative privileges, WinROCm-PyTorch includes `scripts/portable-msvc.py`:
+- Downloads only the standalone x64 compiler, linker, MSVC STL headers, and Windows SDK UCRT/UM headers and libraries directly from Microsoft's official CDN (`https://aka.ms/vs/17/release/channel`).
+- **Download footprint**: ~130 MB compressed.
+- **Disk footprint**: ~450 MB uncompressed in `<InstallDir>\msvc\`.
+- **Zero elevation / zero registry pollution**: 100% self-contained within the installation directory.
+
+### Three-Layer Toolchain Injection
+When Portable MSVC is present, toolchain environment variables are automatically configured across three layers:
+1. **`sitecustomize.py` (Python Runtime Injection)**:
+   - On Python startup, `_discover_and_inject_toolchains()` detects `<rocm_root>\msvc` before searching system paths.
+   - Prepends MSVC and SDK binary paths to `PATH`.
+   - Prepends MSVC and UCRT include directories to `INCLUDE`.
+   - Prepends MSVC and UCRT include directories with forward slashes (`/`) to `CPATH` and `CPLUS_INCLUDE_PATH` for HIPRTC / AMD Clang.
+   - Prepends MSVC and UCRT library directories to `LIB`.
+   - Sets `DISTUTILS_USE_SDK=1` and `MSSdk=1` to notify setuptools that the SDK environment is pre-initialized.
+2. **Launchers (`env_rocm.bat`, `env_rocm.ps1`, `shell_rocm.bat`)**:
+   - Automatically sources `msvc\setup_x64.bat` to expose `cl.exe` directly in interactive CMD and PowerShell sessions.
+3. **Inductor Safety Fallback**:
+   - If MSVC is omitted and a user runs `torch.compile`, `sitecustomize.py` intercepts compiler-missing exceptions, issues an actionable warning, and falls back to standard eager execution instead of terminating with an unhandled crash.
 
 ---
 

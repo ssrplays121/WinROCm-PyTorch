@@ -125,8 +125,11 @@ Describe "ROCm Portable - Templates" {
         $content = Get-Content -Path (Join-Path $script:templateDir "sitecustomize.py") -Raw
         $content | Should -Match "TORCH_BLAS_PREFER_HIPBLASLT"
         $content | Should -Match "_discover_and_inject_toolchains"
+        $content | Should -Match "portable_msvc = os\.path\.join"
+        $content | Should -Match "DISTUTILS_USE_SDK"
         $content | Should -Match "_safe_normalize"
         $content | Should -Match "_safe_batch_norm"
+        $content | Should -Match "_safe_compile"
         $content | Should -Match "MetaPathFinder"
     }
 
@@ -136,6 +139,7 @@ Describe "ROCm Portable - Templates" {
         $content | Should -Match "set `"PIP_NO_CACHE_DIR=1`""
         $content | Should -Match "_rocm_sdk_libraries_custom\\bin"
         $content | Should -Match "TORCH_BLAS_PREFER_HIPBLASLT=1"
+        $content | Should -Match "msvc\\setup_x64\.bat"
         $content | Should -Match "constraints-rocm\.txt"
     }
 
@@ -144,6 +148,7 @@ Describe "ROCm Portable - Templates" {
         $content | Should -Match '\$env:PYTHONNOUSERSITE = "1"'
         $content | Should -Match '_rocm_sdk_libraries_custom\\bin'
         $content | Should -Match '\$env:TORCH_BLAS_PREFER_HIPBLASLT = "1"'
+        $content | Should -Match 'msvc\\setup_x64\.bat'
         $content | Should -Match 'constraints-rocm\.txt'
     }
 }
@@ -178,6 +183,18 @@ Describe "ROCm Portable - Preflight Path Checks" {
         New-Item -ItemType Directory -Force -Path $testTarget | Out-Null
         $config = Import-PowerShellDataFile -Path $script:configPath
         { Test-Preflight -Config $config -TargetDir $testTarget -SelectedRelease "7.2" -SkipGpu } | Should -Not -Throw
+    }
+
+    It "Check 12 detects portable MSVC when present in TargetDir\msvc" {
+        $testTarget = Join-Path $TestDrive "portable_msvc_check12"
+        $msvcInc = Join-Path $testTarget "msvc\VC\Tools\MSVC\14.43.34808\include"
+        New-Item -ItemType Directory -Force -Path $msvcInc | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $msvcInc "type_traits") | Out-Null
+
+        $config = Import-PowerShellDataFile -Path $script:configPath
+        $output = & { Test-Preflight -Config $config -TargetDir $testTarget -SelectedRelease "7.2" -SkipGpu } 6>&1
+        $text = ($output -join "`n")
+        $text | Should -Match "Portable MSVC toolchain detected"
     }
 }
 
@@ -301,6 +318,19 @@ Describe "ROCm Portable - DryRun" {
         { Invoke-DryRun -Config $config -ReleaseInfo $relInfo -TargetDir $nonExistent -IncludeVision:$true -IncludeAudio:$true } | Should -Not -Throw
         (Test-Path -Path $nonExistent) | Should -Be $false
     }
+
+    It "DryRun with -IncludeTriton and -IncludeMsvc outputs proper components and estimates" {
+        $testTarget = Join-Path $TestDrive "dryrun_msvc_target"
+        $config = Import-PowerShellDataFile -Path $script:configPath
+        $relInfo = Get-ReleaseConfig -Config $config -RequestedRelease "7.2"
+
+        $output = & { Invoke-DryRun -Config $config -ReleaseInfo $relInfo -TargetDir $testTarget -IncludeVision:$true -IncludeAudio:$true -IncludeTriton:$true -IncludeMsvc:$true } 6>&1
+        $text = ($output -join "`n")
+        $text | Should -Match "triton-windows"
+        $text | Should -Match "msvc"
+        $text | Should -Match "MSVC Toolchain\s+:\s+Enabled \(portable MSVC"
+        $text | Should -Match "Download Size \(est\) : ~3\.65 GB"
+    }
 }
 
 Describe "ROCm Portable - CLI Diagnostics" {
@@ -369,6 +399,7 @@ Describe "ROCm Portable - Package Manager & CLI Dispatchers" {
         $output = cmd.exe /c "echo 0 | $setupBat"
         $text = ($output -join "`n")
         $text | Should -Match "WinROCm-PyTorch: Portable AMD ROCm PyTorch Environment & Package Manager"
+        $text | Should -Match "MSVC Toolchain\s+:"
         $text | Should -Match "Select an action to perform:"
         $text | Should -Match "\[1\]\s+Install"
         $text | Should -Match "\[2\]\s+Update"

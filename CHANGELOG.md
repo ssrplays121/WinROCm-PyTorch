@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-05
+
+### Added
+- **Portable MSVC Toolchain Integration (`scripts/portable-msvc.py`)**: Automatic installation of standalone MSVC x64 build tools and Windows SDK (~130 MB download, ~450 MB disk space) into `<InstallDir>\msvc\` without requiring Visual Studio IDE or administrator privileges.
+- **Non-Technical Interactive Acceleration Menu**: Simplified 3-option setup menu (`[1] Triton + Portable MSVC (Recommended)`, `[2] Portable MSVC Only`, `[3] Standard Minimal Eager Mode`) with clear plain-English descriptions of benefits for AI inference and model generation.
+- **Plain-English Preflight MSVC Guidance**: Revamped Check 12 to detect portable and system MSVC, explaining what MSVC is, why Triton and MIOpen need it, and how setup resolves it automatically.
+- **Automatic Multi-Layer Toolchain Injection**: Dynamic detection and injection of MSVC `PATH`, `INCLUDE`, `LIB`, and forward-slashed `CPATH` / `CPLUS_INCLUDE_PATH` across `sitecustomize.py`, `env_rocm.bat`, and `env_rocm.ps1`.
+- **Inductor Safety Fallback Guard**: Added protective exception handling in `sitecustomize.py` to catch missing compiler errors during `torch.compile` and gracefully fall back to eager mode with a descriptive warning instead of crashing.
+- **Interactive Menu MSVC Status Indicator**: Added real-time MSVC detection display in `setup.bat`.
+
 ## [0.3.2] - 2026-11-04
 
 ### Added

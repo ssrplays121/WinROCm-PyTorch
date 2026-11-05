@@ -24,6 +24,13 @@
 
 .PARAMETER WithTriton
     Download and install version-matched triton-windows wheel from PyPI for torch.compile acceleration.
+    If system MSVC is not detected, automatically installs portable MSVC (~130 MB).
+
+.PARAMETER WithMsvc
+    Download and install lightweight portable MSVC toolchain (~130 MB) into .\msvc for MIOpen JIT hardware acceleration.
+
+.PARAMETER NoMsvc
+    Explicitly prevent installing portable MSVC even if Triton is requested.
 
 .PARAMETER Reinstall
     Wipe existing .\python, state file, and constraints file, then reinstall cleanly.
@@ -67,6 +74,8 @@ param(
     [switch]$NoVision,
     [switch]$NoAudio,
     [switch]$WithTriton,
+    [switch]$WithMsvc,
+    [switch]$NoMsvc,
     [switch]$Reinstall,
     [switch]$SkipGpuCheck,
     [switch]$SkipVerify,
@@ -435,19 +444,39 @@ function Test-Preflight {
     }
 
     # 12. MSVC C++ Build Tools & Windows SDK (Advisory Check)
-    $hasMsvc = $false
-    $progRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432) | Where-Object { -not [string]::IsNullOrEmpty($_) } | Select-Object -Unique
-    foreach ($r in $progRoots) {
-        $msvcMatches = Get-ChildItem -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\include\type_traits") -ErrorAction SilentlyContinue
-        if ($msvcMatches) {
-            $hasMsvc = $true
-            break
-        }
+    $hasPortableMsvc = $false
+    $hasSystemMsvc = $false
+    $portableMsvcDir = Join-Path $TargetDir "msvc"
+    if (Test-Path -Path (Join-Path $portableMsvcDir "VC\Tools\MSVC\*\include\type_traits")) {
+        $hasPortableMsvc = $true
     }
-    if ($hasMsvc) {
-        Write-Host "  [Pass] MSVC C++ Build Tools detected (MIOpen JIT headers available)" -ForegroundColor Green
+
+    if ($hasPortableMsvc) {
+        Write-Host "  [Pass] Portable MSVC toolchain detected (.\msvc)" -ForegroundColor Green
     } else {
-        $warnings += "Check 12 [Advisory - MSVC Build Tools]: Visual Studio 2022/2026 C++ Build Tools (<type_traits>) not found. MIOpen JIT for BatchNorm on >32x32 tensors will automatically fall back to native ATen kernels via sitecustomize.py. To enable hardware MIOpen JIT compilation, install Visual Studio Build Tools with the 'Desktop development with C++' workload."
+        $progRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432) | Where-Object { -not [string]::IsNullOrEmpty($_) } | Select-Object -Unique
+        foreach ($r in $progRoots) {
+            $msvcMatches = Get-ChildItem -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\include\type_traits") -ErrorAction SilentlyContinue
+            if ($msvcMatches) {
+                $hasSystemMsvc = $true
+                break
+            }
+        }
+        if ($hasSystemMsvc) {
+            Write-Host "  [Pass] Visual Studio C++ Build Tools detected (MIOpen JIT & Triton ready)" -ForegroundColor Green
+        } else {
+            Write-Host "  [Notice] Check 12: Visual Studio C++ Build Tools (MSVC) not detected on your system." -ForegroundColor Yellow
+            Write-Host "           * What this is:" -ForegroundColor Gray
+            Write-Host "             A C++ compiler needed for maximum performance and AI model acceleration." -ForegroundColor Gray
+            Write-Host "           * How it affects your installation:" -ForegroundColor Gray
+            Write-Host "             - Triton Acceleration (torch.compile): Requires a C++ compiler to generate fast GPU kernels." -ForegroundColor Gray
+            Write-Host "             - MIOpen JIT: Hardware kernel compilation for BatchNorm/Conv2d will fall back to native ATen kernels." -ForegroundColor Gray
+            Write-Host "           * What setup can do for you:" -ForegroundColor Gray
+            Write-Host "             - You do NOT need to install the heavy Visual Studio IDE (4-60 GB)." -ForegroundColor Gray
+            Write-Host "             - Setup can automatically download and unpack a lightweight, portable MSVC toolchain" -ForegroundColor Gray
+            Write-Host "               (~130 MB, self-contained in .\msvc, no administrator rights needed)." -ForegroundColor Gray
+            $warnings += "Check 12 [Notice - MSVC Build Tools]: Visual Studio C++ Build Tools not detected. Setup can install portable MSVC (~130 MB) automatically."
+        }
     }
 
     # Output warnings and failures
@@ -473,7 +502,8 @@ function Invoke-DryRun {
         [string]$TargetDir,
         [bool]$IncludeVision,
         [bool]$IncludeAudio,
-        [bool]$IncludeTriton = $false
+        [bool]$IncludeTriton = $false,
+        [bool]$IncludeMsvc = $false
     )
 
     $rName = $ReleaseInfo['Name']
@@ -484,6 +514,10 @@ function Invoke-DryRun {
     if ($IncludeVision) { $compNames += "torchvision" }
     if ($IncludeAudio) { $compNames += "torchaudio" }
     if ($IncludeTriton) { $compNames += "triton-windows" }
+    if ($IncludeMsvc) { $compNames += "msvc" }
+
+    $dlEstimate = if ($IncludeMsvc) { "~3.65 GB" } else { "~3.5 GB" }
+    $diskEstimate = if ($IncludeMsvc) { "~11.5 GB installed, 15.5 GB peak" } else { "~11 GB installed, 15 GB peak" }
 
     Write-Host "================== DRY RUN PLAN ==================" -ForegroundColor Cyan
     Write-Host "ROCm Release        : $rName"
@@ -491,8 +525,9 @@ function Invoke-DryRun {
     Write-Host "Python Version      : $($Config['PythonVersion'])"
     Write-Host "Components          : $($compNames -join ', ')"
     Write-Host "Triton Acceleration : $(if ($IncludeTriton) { 'Enabled (triton-windows for torch.compile)' } else { 'Disabled (eager mode only)' })"
-    Write-Host "Download Size (est) : ~3.5 GB"
-    Write-Host "Disk Required (est) : ~11 GB installed, 15 GB peak"
+    Write-Host "MSVC Toolchain      : $(if ($IncludeMsvc) { 'Enabled (portable MSVC in .\msvc)' } else { 'System / Safe Eager fallback' })"
+    Write-Host "Download Size (est) : $dlEstimate"
+    Write-Host "Disk Required (est) : $diskEstimate"
     Write-Host "==================================================" -ForegroundColor Cyan
 
     Write-Host "`n==> Checking all download URLs (HEAD requests)..." -ForegroundColor Yellow
@@ -849,6 +884,39 @@ function Install-Torch {
     }
 }
 
+function Install-PortableMsvc {
+    param(
+        [string]$TargetDir
+    )
+
+    $pythonDir = Join-Path $TargetDir "python"
+    $pythonExe = Join-Path $pythonDir "python.exe"
+    $msvcDir   = Join-Path $TargetDir "msvc"
+    $scriptSrc = Join-Path $PSScriptRoot "scripts\portable-msvc.py"
+    if (-not (Test-Path -Path $scriptSrc)) {
+        $scriptSrc = Join-Path $TargetDir "scripts\portable-msvc.py"
+    }
+
+    if (-not (Test-Path -Path $scriptSrc)) {
+        throw [SetupException]::new(1, "Required portable MSVC installer script not found: $scriptSrc")
+    }
+
+    Write-Host "`n[4b/5] Installing lightweight Portable MSVC toolchain (~130 MB download)..." -ForegroundColor Yellow
+    Write-Host "  Target directory: $msvcDir" -ForegroundColor Cyan
+
+    & $pythonExe $scriptSrc --accept-license --output $msvcDir --target x64 --host x64
+    Assert-LastExit "Portable MSVC toolchain installation" 4
+
+    # Verification: check cl.exe and headers
+    $clMatches = Get-ChildItem -Path (Join-Path $msvcDir "VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe") -ErrorAction SilentlyContinue
+    $headerMatches = Get-ChildItem -Path (Join-Path $msvcDir "VC\Tools\MSVC\*\include\type_traits") -ErrorAction SilentlyContinue
+    if (-not $clMatches -or -not $headerMatches) {
+        throw [SetupException]::new(4, "Portable MSVC installation failed: cl.exe or C++ headers missing in $msvcDir")
+    }
+
+    Write-Host "  [Pass] Portable MSVC toolchain installed and verified." -ForegroundColor Green
+}
+
 function Install-Triton {
     param(
         [string]$TargetDir
@@ -1141,6 +1209,8 @@ function Show-SetupHelp {
     Write-Host "  -InstallDir <path>  Target directory for installation (default: script root)."
     Write-Host "  -RocmRelease <ver>  Target ROCm release version (e.g. 7.2, 7.2.1)."
     Write-Host "  -WithTriton         Include triton-windows wheel for torch.compile acceleration."
+    Write-Host "  -WithMsvc           Install portable MSVC toolchain (~130 MB) into .\msvc for MIOpen/Triton."
+    Write-Host "  -NoMsvc             Prevent installing portable MSVC even if Triton is requested."
     Write-Host "  -NoVision           Skip torchvision installation."
     Write-Host "  -NoAudio            Skip torchaudio installation."
     Write-Host "  -Reinstall          Wipe existing python/ environment and reinstall cleanly."
@@ -1162,6 +1232,8 @@ function Invoke-Main {
         [switch]$SkipVision,
         [switch]$SkipAudio,
         [switch]$IncludeTriton,
+        [switch]$IncludeMsvc,
+        [switch]$NoMsvc,
         [switch]$ForceReinstall,
         [switch]$SkipGpu,
         [switch]$NoVerification,
@@ -1229,9 +1301,26 @@ function Invoke-Main {
     # Handle Preflight Checks
     Test-Preflight -Config $config -TargetDir $resolvedInstallDir -SelectedRelease $releaseInfo['Name'] -SkipGpu:$SkipGpu
 
+    # Check for existing MSVC toolchain on system or in portable directory
+    $hasAnyMsvc = (Test-Path -Path (Join-Path $resolvedInstallDir "msvc\VC\Tools\MSVC\*\include\type_traits"))
+    if (-not $hasAnyMsvc) {
+        $progRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432) | Where-Object { -not [string]::IsNullOrEmpty($_) } | Select-Object -Unique
+        foreach ($r in $progRoots) {
+            if (Get-ChildItem -Path (Join-Path $r "Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\include\type_traits") -ErrorAction SilentlyContinue) {
+                $hasAnyMsvc = $true
+                break
+            }
+        }
+    }
+
+    # If Triton is requested and no MSVC exists, automatically include portable MSVC unless explicitly prohibited
+    if ($IncludeTriton -and -not $NoMsvc -and -not $hasAnyMsvc) {
+        $IncludeMsvc = $true
+    }
+
     # Handle -DryRun
     if ($IsDryRun) {
-        Invoke-DryRun -Config $config -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:(-not $SkipVision) -IncludeAudio:(-not $SkipAudio) -IncludeTriton:$IncludeTriton
+        Invoke-DryRun -Config $config -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:(-not $SkipVision) -IncludeAudio:(-not $SkipAudio) -IncludeTriton:$IncludeTriton -IncludeMsvc:$IncludeMsvc
         return
     }
 
@@ -1247,6 +1336,7 @@ function Invoke-Main {
     if ($includeVision) { $compList += "torchvision" }
     if ($includeAudio) { $compList += "torchaudio" }
     if ($IncludeTriton) { $compList += "triton-windows" }
+    if ($IncludeMsvc) { $compList += "msvc" }
 
     if (-not $Unattended) {
         $isInteractive = [Environment]::UserInteractive
@@ -1255,24 +1345,63 @@ function Invoke-Main {
             throw [SetupException]::new(2, "Running in non-interactive environment without -Yes. Aborting.")
         }
 
-        if (-not $IncludeTriton) {
-            Write-Host "`n--- Optional: Triton Acceleration ---" -ForegroundColor Yellow
-            Write-Host "Triton enables 'torch.compile' support on AMD ROCm for faster AI models" -ForegroundColor Gray
-            Write-Host "(e.g., ComfyUI, Stable Diffusion, LLMs). Requires Visual Studio C++ Build Tools." -ForegroundColor Gray
-            $ansTriton = Read-Host "Include Triton (triton-windows)? [y/N]"
-            if ($ansTriton -and $ansTriton.Trim().ToLower() -eq 'y') {
-                $IncludeTriton = $true
-                $compList += "triton-windows"
-                Write-Host "  Triton acceleration enabled in plan." -ForegroundColor Green
+        # If user did not pass -WithTriton or -WithMsvc, present plain-English acceleration options
+        if (-not $IncludeTriton -and -not $IncludeMsvc) {
+            if (-not $hasAnyMsvc) {
+                Write-Host "`n======================= ACCELERATION & TOOLCHAIN SELECTION =======================" -ForegroundColor Cyan
+                Write-Host "Choose the acceleration level for your ROCm PyTorch installation:`n" -ForegroundColor Gray
+                Write-Host "  [1] Triton + Portable MSVC (Recommended for ComfyUI / SD / LLMs)" -ForegroundColor Green
+                Write-Host "      * Up to 2x faster model generation using 'torch.compile'" -ForegroundColor Gray
+                Write-Host "      * Automatically installs portable MSVC (~130 MB) into .\msvc" -ForegroundColor Gray
+                Write-Host "      * Enables hardware MIOpen JIT compilation (no admin rights needed)`n" -ForegroundColor Gray
+                Write-Host "  [2] Portable MSVC Only (Hardware MIOpen JIT, Standard Eager PyTorch)" -ForegroundColor Yellow
+                Write-Host "      * Automatically installs portable MSVC (~130 MB) into .\msvc" -ForegroundColor Gray
+                Write-Host "      * Enables hardware MIOpen JIT for BatchNorm & Conv2d" -ForegroundColor Gray
+                Write-Host "      * Keeps PyTorch in standard eager execution (does not install Triton)`n" -ForegroundColor Gray
+                Write-Host "  [3] Standard Minimal (Eager Mode Only, Safe Fallbacks, No MSVC)" -ForegroundColor White
+                Write-Host "      * Fastest install and smallest download (~0 MB extra download)" -ForegroundColor Gray
+                Write-Host "      * BatchNorm automatically uses safe ATen kernel fallback" -ForegroundColor Gray
+                Write-Host "      * 'torch.compile' / Triton acceleration will be disabled`n" -ForegroundColor Gray
+                Write-Host "==================================================================================" -ForegroundColor Cyan
+
+                $ans = Read-Host "Please select an option [1-3] (Default: 1)"
+                if ([string]::IsNullOrWhiteSpace($ans) -or $ans.Trim() -eq '1') {
+                    $IncludeTriton = $true
+                    $IncludeMsvc = $true
+                    $compList += "triton-windows"
+                    $compList += "msvc"
+                    Write-Host "  Option 1 selected: Triton acceleration + Portable MSVC enabled." -ForegroundColor Green
+                } elseif ($ans.Trim() -eq '2') {
+                    $IncludeMsvc = $true
+                    $compList += "msvc"
+                    Write-Host "  Option 2 selected: Portable MSVC enabled (eager mode PyTorch)." -ForegroundColor Green
+                } else {
+                    Write-Host "  Option 3 selected: Standard minimal eager mode." -ForegroundColor Gray
+                }
+            } else {
+                Write-Host "`n--- Optional: Triton Acceleration ---" -ForegroundColor Yellow
+                Write-Host "Triton enables 'torch.compile' support on AMD ROCm for faster AI models" -ForegroundColor Gray
+                Write-Host "(e.g., ComfyUI, Stable Diffusion, LLMs). System MSVC detected." -ForegroundColor Gray
+                $ansTriton = Read-Host "Include Triton (triton-windows)? [Y/n]"
+                if ([string]::IsNullOrWhiteSpace($ansTriton) -or $ansTriton.Trim().ToLower() -eq 'y') {
+                    $IncludeTriton = $true
+                    $compList += "triton-windows"
+                    Write-Host "  Triton acceleration enabled in plan." -ForegroundColor Green
+                }
             }
         }
+
+        $dlEst = if ($IncludeMsvc) { "~3.65 GB" } else { "~3.5 GB" }
+        $diskEst = if ($IncludeMsvc) { "~15.5 GB" } else { "~15 GB" }
+
         Write-Host "================== INSTALLATION PLAN ==================" -ForegroundColor Cyan
         Write-Host "Target Directory : $resolvedInstallDir"
         Write-Host "ROCm Release     : $($releaseInfo['Name'])"
         Write-Host "Components          : $($compList -join ', ')"
-        Write-Host "Triton Acceleration : $(if ($IncludeTriton) { 'Enabled (triton-windows for torch.compile)' } else { 'Disabled (eager mode only; pass -WithTriton to enable)' })"
-        Write-Host "Download Size    : ~3.5 GB"
-        Write-Host "Peak Disk Space  : ~15 GB"
+        Write-Host "Triton Acceleration : $(if ($IncludeTriton) { 'Enabled (triton-windows for torch.compile)' } else { 'Disabled (eager mode only)' })"
+        Write-Host "MSVC Toolchain      : $(if ($IncludeMsvc) { 'Enabled (portable MSVC in .\msvc, ~130 MB)' } elseif ($hasAnyMsvc) { 'System Visual Studio detected' } else { 'Safe Eager ATen fallback' })"
+        Write-Host "Download Size    : $dlEst"
+        Write-Host "Peak Disk Space  : $diskEst"
         Write-Host "=======================================================" -ForegroundColor Cyan
 
 
@@ -1322,6 +1451,11 @@ function Invoke-Main {
             if (Test-Path -Path $pythonDir) { Remove-Item -Path $pythonDir -Recurse -Force }
             if (Test-Path -Path $stateFile) { Remove-Item -Path $stateFile -Force }
             if (Test-Path -Path $constraintsFile) { Remove-Item -Path $constraintsFile -Force }
+            $msvcDir = Join-Path $resolvedInstallDir "msvc"
+            if (Test-Path -Path $msvcDir) {
+                Write-Host "[-Reinstall] Removing existing .\msvc..." -ForegroundColor Yellow
+                Remove-Item -Path $msvcDir -Recurse -Force
+            }
         }
 
         # Read existing state
@@ -1395,6 +1529,11 @@ function Invoke-Main {
         # Step 4b: PyTorch
         Install-Torch -ReleaseInfo $releaseInfo -TargetDir $resolvedInstallDir -IncludeVision:$includeVision -IncludeAudio:$includeAudio -State $existingState
 
+        # Step 4b2: Portable MSVC (optional / auto-installed for Triton or MIOpen JIT)
+        if ($IncludeMsvc) {
+            Install-PortableMsvc -TargetDir $resolvedInstallDir
+        }
+
         # Step 4c: Triton (optional)
         if ($IncludeTriton) {
             Install-Triton -TargetDir $resolvedInstallDir
@@ -1459,6 +1598,8 @@ if ($MyInvocation.InvocationName -ne '.') {
             -SkipVision:$NoVision `
             -SkipAudio:$NoAudio `
             -IncludeTriton:$WithTriton `
+            -IncludeMsvc:$WithMsvc `
+            -NoMsvc:$NoMsvc `
             -ForceReinstall:$Reinstall `
             -SkipGpu:$SkipGpuCheck `
             -NoVerification:$SkipVerify `

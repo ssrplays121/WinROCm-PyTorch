@@ -42,71 +42,130 @@ def _prepend_env_path(var_name: str, new_paths: list[str], use_forward_slash: bo
 
 
 def _discover_and_inject_toolchains() -> None:
-    prog_roots = []
-    for var in ("ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"):
-        val = os.environ.get(var)
-        if val and val not in prog_roots:
-            prog_roots.append(val)
-
-    # A. Locate MSVC (VS 2026 / v18 and VS 2022 / v17) via vswhere or filesystem glob
-    vs_install_dirs = []
-    for root in prog_roots:
-        vswhere = os.path.join(root, "Microsoft Visual Studio", "Installer", "vswhere.exe")
-        if os.path.isfile(vswhere):
-            try:
-                out = subprocess.check_output(
-                    [
-                        vswhere,
-                        "-latest",
-                        "-products", "*",
-                        "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-                        "-property", "installationPath",
-                    ],
-                    text=True,
-                    stderr=subprocess.DEVNULL,
-                    timeout=3,
-                ).strip()
-                if out and os.path.isdir(out):
-                    vs_install_dirs.append(out)
-            except Exception:
-                pass
-
-    msvc_dirs = []
-    for vs_dir in vs_install_dirs:
-        msvc_dirs.extend(glob.glob(os.path.join(vs_dir, "VC", "Tools", "MSVC", "*")))
-
-    if not msvc_dirs:
-        for root in prog_roots:
-            for ver in ("2026", "18", "2022", "17"):
-                pattern = os.path.join(
-                    root, "Microsoft Visual Studio", ver, "*", "VC", "Tools", "MSVC", "*"
-                )
-                msvc_dirs.extend(glob.glob(pattern))
-
     include_dirs = []
     bin_dirs = []
+    lib_dirs = []
 
-    if msvc_dirs:
-        latest_msvc = sorted(msvc_dirs)[-1]
-        msvc_bin = os.path.join(latest_msvc, "bin", "Hostx64", "x64")
-        msvc_inc = os.path.join(latest_msvc, "include")
-        if os.path.isdir(msvc_bin):
-            bin_dirs.append(msvc_bin)
-        if os.path.isdir(msvc_inc):
-            include_dirs.append(msvc_inc)
+    rocm_root = os.environ.get("ROCM_ROOT") or os.path.abspath(
+        os.path.join(sys.prefix, "..")
+    )
+    portable_msvc = os.path.join(rocm_root, "msvc")
+    portable_found = False
 
-    # B. Locate Windows 10/11 SDK Universal CRT (ucrt & shared) headers
-    for root in prog_roots:
-        kits_inc = os.path.join(root, "Windows Kits", "10", "Include")
-        if os.path.isdir(kits_inc):
-            sdk_vers = sorted(glob.glob(os.path.join(kits_inc, "10.*")))
-            if sdk_vers:
-                latest_sdk = sdk_vers[-1]
-                for sub in ("ucrt", "shared", "um"):
-                    sub_dir = os.path.join(latest_sdk, sub)
-                    if os.path.isdir(sub_dir):
-                        include_dirs.append(sub_dir)
-            break
+    # A. Check for self-contained Portable MSVC in <ROCM_ROOT>\msvc
+    if os.path.isdir(portable_msvc):
+        p_msvc_dirs = glob.glob(
+            os.path.join(portable_msvc, "VC", "Tools", "MSVC", "*")
+        )
+        if p_msvc_dirs:
+            latest_p_msvc = sorted(p_msvc_dirs)[-1]
+            p_bin = os.path.join(latest_p_msvc, "bin", "Hostx64", "x64")
+            p_inc = os.path.join(latest_p_msvc, "include")
+            p_lib = os.path.join(latest_p_msvc, "lib", "x64")
+            if os.path.isdir(p_bin):
+                bin_dirs.append(p_bin)
+            if os.path.isdir(p_inc):
+                include_dirs.append(p_inc)
+            if os.path.isdir(p_lib):
+                lib_dirs.append(p_lib)
+
+            # SDK inside portable MSVC
+            p_kits_inc = os.path.join(portable_msvc, "Windows Kits", "10", "Include")
+            if os.path.isdir(p_kits_inc):
+                p_sdk_vers = sorted(glob.glob(os.path.join(p_kits_inc, "*")))
+                if p_sdk_vers:
+                    latest_p_sdk = os.path.basename(p_sdk_vers[-1])
+                    for sub in ("ucrt", "shared", "um"):
+                        sub_dir = os.path.join(p_kits_inc, latest_p_sdk, sub)
+                        if os.path.isdir(sub_dir):
+                            include_dirs.append(sub_dir)
+                    p_sdk_bin = os.path.join(
+                        portable_msvc, "Windows Kits", "10", "bin", latest_p_sdk, "x64"
+                    )
+                    if os.path.isdir(p_sdk_bin):
+                        bin_dirs.append(p_sdk_bin)
+                    for sub_lib in ("ucrt", "um"):
+                        sub_lib_dir = os.path.join(
+                            portable_msvc, "Windows Kits", "10", "Lib", latest_p_sdk, sub_lib, "x64"
+                        )
+                        if os.path.isdir(sub_lib_dir):
+                            lib_dirs.append(sub_lib_dir)
+
+            os.environ.setdefault("DISTUTILS_USE_SDK", "1")
+            os.environ.setdefault("MSSdk", "1")
+            portable_found = True
+
+    # B. If portable MSVC is not found, fallback to system Visual Studio & Windows Kits
+    if not portable_found:
+        prog_roots = []
+        for var in ("ProgramFiles(x86)", "ProgramFiles", "ProgramW6432"):
+            val = os.environ.get(var)
+            if val and val not in prog_roots:
+                prog_roots.append(val)
+
+        vs_install_dirs = []
+        for root in prog_roots:
+            vswhere = os.path.join(root, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+            if os.path.isfile(vswhere):
+                try:
+                    out = subprocess.check_output(
+                        [
+                            vswhere,
+                            "-latest",
+                            "-products", "*",
+                            "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                            "-property", "installationPath",
+                        ],
+                        text=True,
+                        stderr=subprocess.DEVNULL,
+                        timeout=3,
+                    ).strip()
+                    if out and os.path.isdir(out):
+                        vs_install_dirs.append(out)
+                except Exception:
+                    pass
+
+        msvc_dirs = []
+        for vs_dir in vs_install_dirs:
+            msvc_dirs.extend(glob.glob(os.path.join(vs_dir, "VC", "Tools", "MSVC", "*")))
+
+        if not msvc_dirs:
+            for root in prog_roots:
+                for ver in ("2026", "18", "2022", "17"):
+                    pattern = os.path.join(
+                        root, "Microsoft Visual Studio", ver, "*", "VC", "Tools", "MSVC", "*"
+                    )
+                    msvc_dirs.extend(glob.glob(pattern))
+
+        if msvc_dirs:
+            latest_msvc = sorted(msvc_dirs)[-1]
+            msvc_bin = os.path.join(latest_msvc, "bin", "Hostx64", "x64")
+            msvc_inc = os.path.join(latest_msvc, "include")
+            msvc_lib = os.path.join(latest_msvc, "lib", "x64")
+            if os.path.isdir(msvc_bin):
+                bin_dirs.append(msvc_bin)
+            if os.path.isdir(msvc_inc):
+                include_dirs.append(msvc_inc)
+            if os.path.isdir(msvc_lib):
+                lib_dirs.append(msvc_lib)
+
+        for root in prog_roots:
+            kits_inc = os.path.join(root, "Windows Kits", "10", "Include")
+            kits_lib = os.path.join(root, "Windows Kits", "10", "Lib")
+            if os.path.isdir(kits_inc):
+                sdk_vers = sorted(glob.glob(os.path.join(kits_inc, "10.*")))
+                if sdk_vers:
+                    latest_sdk = sdk_vers[-1]
+                    latest_sdk_ver = os.path.basename(latest_sdk)
+                    for sub in ("ucrt", "shared", "um"):
+                        sub_dir = os.path.join(latest_sdk, sub)
+                        if os.path.isdir(sub_dir):
+                            include_dirs.append(sub_dir)
+                    for sub_lib in ("ucrt", "um"):
+                        sub_lib_dir = os.path.join(kits_lib, latest_sdk_ver, sub_lib, "x64")
+                        if os.path.isdir(sub_lib_dir):
+                            lib_dirs.append(sub_lib_dir)
+                break
 
     # C. Locate ROCm SDK Devel & Core headers inside site-packages
     site_pkgs = os.path.join(sys.prefix, "Lib", "site-packages")
@@ -121,6 +180,7 @@ def _discover_and_inject_toolchains() -> None:
 
     _prepend_env_path("PATH", bin_dirs, use_forward_slash=False)
     _prepend_env_path("INCLUDE", include_dirs, use_forward_slash=False)
+    _prepend_env_path("LIB", lib_dirs, use_forward_slash=False)
     _prepend_env_path("CPATH", include_dirs, use_forward_slash=True)
     _prepend_env_path("CPLUS_INCLUDE_PATH", include_dirs, use_forward_slash=True)
 
@@ -219,6 +279,46 @@ def _apply_torch_patches(torch_module) -> None:
             raise
 
     F.batch_norm = _safe_batch_norm
+
+    # Patch 3: Resilient torch.compile with automatic eager fallback on missing MSVC compiler
+    _orig_compile = getattr(torch_module, "compile", None)
+    _compile_fallback_warned = False
+
+    if callable(_orig_compile):
+        def _safe_compile(*args, **kwargs):
+            nonlocal _compile_fallback_warned
+            compiled_fn = _orig_compile(*args, **kwargs)
+
+            def _wrapped_callable(*c_args, **c_kwargs):
+                nonlocal _compile_fallback_warned
+                try:
+                    return compiled_fn(*c_args, **c_kwargs)
+                except Exception as exc:
+                    exc_name = type(exc).__name__
+                    exc_str = str(exc)
+                    if (
+                        "BackendCompilerFailed" in exc_name
+                        or "CppCompileError" in exc_name
+                        or ("Compiler" in exc_str and "is not found" in exc_str)
+                        or ("cl" in exc_str and "not recognized" in exc_str)
+                    ):
+                        if not _compile_fallback_warned:
+                            warnings.warn(
+                                "torch.compile failed because MSVC C++ Build Tools (cl.exe) were not found. "
+                                "Falling back to standard eager execution. To enable hardware torch.compile "
+                                "acceleration, run 'setup.bat' and select Portable MSVC (Option 1).",
+                                RuntimeWarning,
+                                stacklevel=2,
+                            )
+                            _compile_fallback_warned = True
+                        orig_fn = args[0] if args else kwargs.get("model")
+                        if callable(orig_fn):
+                            return orig_fn(*c_args, **c_kwargs)
+                    raise
+
+            return _wrapped_callable
+
+        torch_module.compile = _safe_compile
 
 
 # 3. Single-Execution MetaPath Loader Hook (Avoids double module execution)

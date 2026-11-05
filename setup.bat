@@ -379,8 +379,10 @@ set "EMPTY_COUNT=0"
 cls 2>nul
 set "HAS_INSTALL=0"
 set "HAS_TRITON=0"
+set "HAS_MSVC=0"
 set "ENV_STATUS=NOT INSTALLED"
 set "TRITON_STATUS=NOT INSTALLED [torch.compile disabled]"
+set "MSVC_STATUS=NOT DETECTED [safe eager ATen fallback]"
 if exist "%~dp0.rocm-portable.json" (
     set "HAS_INSTALL=1"
     set "ENV_STATUS=INSTALLED [active .rocm-portable.json found]"
@@ -397,12 +399,26 @@ for /d %%D in ("%~dp0python\Lib\site-packages\triton_windows-*") do (
     set "HAS_TRITON=1"
     set "TRITON_STATUS=INSTALLED [torch.compile active]"
 )
+if exist "%~dp0msvc\setup_x64.bat" (
+    set "HAS_MSVC=1"
+    set "MSVC_STATUS=INSTALLED [portable .\msvc]"
+) else (
+    for %%P in ("%ProgramFiles%" "%ProgramFiles(x86)%" "%ProgramW6432%") do (
+        if exist "%%~P\Microsoft Visual Studio" (
+            for /d %%V in ("%%~P\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*") do (
+                set "HAS_MSVC=1"
+                set "MSVC_STATUS=INSTALLED [system Visual Studio]"
+            )
+        )
+    )
+)
 
 echo ================================================================================
 echo   WinROCm-PyTorch: Portable AMD ROCm PyTorch Environment ^& Package Manager
 echo ================================================================================
 echo   Environment Status : !ENV_STATUS!
 echo   Triton Support     : !TRITON_STATUS!
+echo   MSVC Toolchain     : !MSVC_STATUS!
 echo   Working Directory  : %~dp0
 echo.
 echo   Select an action to perform:

@@ -13,6 +13,13 @@ if errorlevel 1 (
     set "PATH=%ROCM_ROOT%\bin;%ROCM_ROOT%\python;%ROCM_ROOT%\python\Scripts;%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_libraries_custom\bin;%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_core\bin;%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel\bin;%PATH%"
 )
 
+rem Configure Portable MSVC environment if present (ROCm / Triton acceleration)
+if exist "%ROCM_ROOT%\msvc\setup_x64.bat" (
+    call "%ROCM_ROOT%\msvc\setup_x64.bat" >nul 2>&1
+    set "CPATH=%INCLUDE:\=/%"
+    set "CPLUS_INCLUDE_PATH=%INCLUDE:\=/%"
+)
+
 set "TORCH_BLAS_PREFER_HIPBLASLT=1"
 if exist "%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel" (
     set "ROCM_PATH=%ROCM_ROOT%\python\Lib\site-packages\_rocm_sdk_devel"

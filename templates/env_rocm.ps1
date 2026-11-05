@@ -32,6 +32,26 @@ if ($newPaths.Count -gt 0) {
     $env:PATH = ($newPaths -join ';') + ';' + $env:PATH
 }
 
+# Configure Portable MSVC environment if present (ROCm / Triton acceleration)
+$msvcSetupBat = Join-Path $installDir "msvc\setup_x64.bat"
+if (Test-Path -Path $msvcSetupBat) {
+    $msvcEnv = cmd.exe /c "call `"$msvcSetupBat`" >nul 2>&1 && set"
+    foreach ($line in $msvcEnv) {
+        $eqIdx = $line.IndexOf('=')
+        if ($eqIdx -gt 0) {
+            $k = $line.Substring(0, $eqIdx)
+            $v = $line.Substring($eqIdx + 1)
+            if ($k -in @("PATH", "INCLUDE", "LIB", "DISTUTILS_USE_SDK", "MSSdk", "VCToolsInstallDir", "WindowsSDKVersion")) {
+                [Environment]::SetEnvironmentVariable($k, $v, "Process")
+            }
+        }
+    }
+    if ($env:INCLUDE) {
+        $env:CPATH = $env:INCLUDE -replace '\\', '/'
+        $env:CPLUS_INCLUDE_PATH = $env:INCLUDE -replace '\\', '/'
+    }
+}
+
 $env:TORCH_BLAS_PREFER_HIPBLASLT = "1"
 $rocmDevel = "$installDir\python\Lib\site-packages\_rocm_sdk_devel"
 if (Test-Path -Path $rocmDevel) {

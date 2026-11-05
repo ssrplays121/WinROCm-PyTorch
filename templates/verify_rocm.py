@@ -15,7 +15,18 @@ print(f"HIP Version          : {getattr(torch.version, 'hip', None)}")
 print(f"CUDA Spoof Version   : {getattr(torch.version, 'cuda', None)}")
 print(f"ROCm/CUDA Available  : {torch.cuda.is_available()}")
 print(f"ROCM_PATH            : {os.environ.get('ROCM_PATH', 'Not Set')}")
-print(f"MSVC/UCRT in CPATH   : {'MSVC' in os.environ.get('CPATH', '') and 'ucrt' in os.environ.get('CPATH', '').lower()}")
+msvc_status = "Not Found (eager ATen fallback)"
+cpath = os.environ.get("CPATH", "")
+path = os.environ.get("PATH", "")
+if "msvc" in cpath.lower() or "msvc" in path.lower():
+    rocm_root = os.environ.get("ROCM_ROOT") or os.path.abspath(os.path.join(sys.prefix, ".."))
+    if os.path.isdir(os.path.join(rocm_root, "msvc")):
+        msvc_status = "Portable MSVC (.\\msvc)"
+    else:
+        msvc_status = "System Visual Studio"
+
+print(f"MSVC Toolchain       : {msvc_status}")
+print(f"MSVC/UCRT in CPATH   : {'MSVC' in cpath.upper() and 'ucrt' in cpath.lower()}")
 print(f"hipBLASLt Preferred  : {os.environ.get('TORCH_BLAS_PREFER_HIPBLASLT') == '1'}")
 print(f"MIOpen Enabled       : {torch.backends.cudnn.enabled}")
 
