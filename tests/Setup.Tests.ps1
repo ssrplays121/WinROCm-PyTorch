@@ -745,4 +745,15 @@ Describe "ROCm Automated Release System & Cloud Watchdog (v0.5.0)" {
         $content | Should -Match "GetPipSha256"
         $content | Should -Match "triton-windows"
     }
+
+    It ".github/workflows/version-watchdog.yml inline PowerShell script contains zero syntax errors" {
+        $watchdogYml = Join-Path $script:repoRoot ".github\workflows\version-watchdog.yml"
+        $content = Get-Content -Path $watchdogYml -Raw
+        $idx = $content.IndexOf("run: |")
+        $idx | Should -BeGreaterThan 0
+        $script = $content.Substring($idx + 6)
+        $tokens = $null; $errors = $null
+        [System.Management.Automation.Language.Parser]::ParseInput($script, [ref]$tokens, [ref]$errors)
+        $errors.Count | Should -Be 0
+    }
 }

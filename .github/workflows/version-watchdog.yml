@@ -107,10 +107,10 @@ jobs:
                   "",
                   "### Recommended Next Steps for Maintainers:",
                   "Run the automated release staging and hardware verification commands:",
-                  "```cmd",
-                  "setup.bat stage-release -Version <version>",
-                  "setup.bat test-and-promote -Version <version>",
-                  "```"
+                  '```cmd',
+                  'setup.bat stage-release -Version <version>',
+                  'setup.bat test-and-promote -Version <version>',
+                  '```'
               )
               $summary = $summaryLines -join "`n"
 
