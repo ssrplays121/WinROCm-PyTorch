@@ -47,8 +47,8 @@ if (Test-Path -Path $msvcSetupBat) {
         }
     }
     if ($env:INCLUDE) {
-        $env:CPATH = $env:INCLUDE -replace '\\', '/'
         $env:CPLUS_INCLUDE_PATH = $env:INCLUDE -replace '\\', '/'
+        $env:CPATH = $null
     }
 }
 

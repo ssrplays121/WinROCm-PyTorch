@@ -449,7 +449,8 @@ if (Test-Path -Path $msvcSetupBat) {
             }
         }
         if ($env:INCLUDE) {
-            $env:CPATH = $env:INCLUDE -replace '\\', '/'
+            $env:CPLUS_INCLUDE_PATH = $env:INCLUDE -replace '\\', '/'
+            $env:CPATH = $null
         }
     } catch {
         Write-Warning "Could not inject existing Portable MSVC environment: $($_.Exception.Message)"
@@ -481,7 +482,8 @@ if ($msvcItem -or ($WithMsvc -and -not (Test-Path -Path $msvcSetupBat))) {
                 }
             }
             if ($env:INCLUDE) {
-                $env:CPATH = $env:INCLUDE -replace '\\', '/'
+                $env:CPLUS_INCLUDE_PATH = $env:INCLUDE -replace '\\', '/'
+                $env:CPATH = $null
             }
         }
         Write-Host "  [Pass] Portable MSVC toolchain installed and activated." -ForegroundColor Green

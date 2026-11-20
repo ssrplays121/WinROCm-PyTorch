@@ -1,5 +1,6 @@
 # Isolated installation directories and temporary files
 python/
+msvc/
 .cache/
 .tmp/
 logs/

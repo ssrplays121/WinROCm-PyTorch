@@ -16,9 +16,11 @@ print(f"CUDA Spoof Version   : {getattr(torch.version, 'cuda', None)}")
 print(f"ROCm/CUDA Available  : {torch.cuda.is_available()}")
 print(f"ROCM_PATH            : {os.environ.get('ROCM_PATH', 'Not Set')}")
 msvc_status = "Not Found (eager ATen fallback)"
+cplus_path = os.environ.get("CPLUS_INCLUDE_PATH", "")
 cpath = os.environ.get("CPATH", "")
 path = os.environ.get("PATH", "")
-if "msvc" in cpath.lower() or "msvc" in path.lower():
+include = os.environ.get("INCLUDE", "")
+if any("msvc" in p.lower() for p in (cplus_path, cpath, path, include)):
     rocm_root = os.environ.get("ROCM_ROOT") or os.path.abspath(os.path.join(sys.prefix, ".."))
     if os.path.isdir(os.path.join(rocm_root, "msvc")):
         msvc_status = "Portable MSVC (.\\msvc)"
@@ -26,7 +28,11 @@ if "msvc" in cpath.lower() or "msvc" in path.lower():
         msvc_status = "System Visual Studio"
 
 print(f"MSVC Toolchain       : {msvc_status}")
-print(f"MSVC/UCRT in CPATH   : {'MSVC' in cpath.upper() and 'ucrt' in cpath.lower()}")
+has_msvc_ucrt = (
+    any("MSVC" in p.upper() for p in (cplus_path, cpath, include))
+    and any("ucrt" in p.lower() for p in (cplus_path, cpath, include))
+)
+print(f"MSVC/UCRT in CPLUS   : {has_msvc_ucrt}")
 print(f"hipBLASLt Preferred  : {os.environ.get('TORCH_BLAS_PREFER_HIPBLASLT') == '1'}")
 print(f"MIOpen Enabled       : {torch.backends.cudnn.enabled}")
 
@@ -110,5 +116,13 @@ except Exception as e:
     print(f"[WARN] Triton JIT    : Installed but kernel compile failed ({e})")
 
 print("=" * 65 + "\n")
-if not success:
-    sys.exit(1)
+exit_code = 0 if success else 1
+sys.stdout.flush()
+sys.stderr.flush()
+
+if sys.platform == "win32":
+    import ctypes
+    # TerminateProcess bypasses DllMain/loader-lock deadlocks in native thread pools (LLVM / ROCm / _triton)
+    ctypes.windll.kernel32.TerminateProcess(ctypes.c_void_p(-1), exit_code)
+else:
+    os._exit(exit_code)

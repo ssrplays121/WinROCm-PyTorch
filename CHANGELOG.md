@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Explicit Triton Release Pinning**: Pinned compatible `triton-windows` `3.5.1.post24` in `config/releases.psd1` for deterministic candidate resolution.
 
 ### Fixed
+- **Triton JIT TinyCC CPATH Pollution (`vadefs.h:65`)**: Directed MSVC and Windows SDK UCRT include directories exclusively to `CPLUS_INCLUDE_PATH` and sanitized `CPATH`. This prevents TinyCC (`tcc.exe`) in `triton-windows` from loading incompatible MSVC CRT headers during `hip_utils.c` compilation while preserving full C++ STL header resolution for MIOpen BatchNorm JIT via HIPRTC.
+- **Verification Teardown Deadlock & Menu Freeze**: Replaced standard Python runtime exit in `verify_rocm.py` with Win32 `TerminateProcess` after stream flushing, eliminating Windows Loader Lock deadlocks from unfinalized native LLVM/MLIR thread pools and ensuring the caller batch script always returns promptly to the interactive menu.
 - **PowerShell Native Argument Quote-Stripping SyntaxError**: Replaced command-line `-c` execution in `scripts/update.ps1` with standard input piping (`$constraintsPy | & $pythonExe -`), preventing Windows PowerShell 5.1 from stripping internal double quotes and eliminating the `SyntaxError: invalid syntax. Perhaps you forgot a comma?` crash during constraints generation.
 - **Triton-Windows False "Upgrade Available" Detection**: Replaced hardcoded `IsUpgrade = $true` in `scripts/update.ps1` with accurate version comparison against candidate/PyPI matching wheels, correctly recognizing `3.5.1.post24` as `[Up to date]`.
 

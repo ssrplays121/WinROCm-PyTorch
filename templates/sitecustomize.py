@@ -181,8 +181,22 @@ def _discover_and_inject_toolchains() -> None:
     _prepend_env_path("PATH", bin_dirs, use_forward_slash=False)
     _prepend_env_path("INCLUDE", include_dirs, use_forward_slash=False)
     _prepend_env_path("LIB", lib_dirs, use_forward_slash=False)
-    _prepend_env_path("CPATH", include_dirs, use_forward_slash=True)
+    # Inject MSVC/UCRT headers into CPLUS_INCLUDE_PATH for HIPRTC (MIOpen JIT C++ kernels).
+    # Do NOT inject MSVC into CPATH: CPATH is parsed by TinyCC (tcc.exe) in triton-windows,
+    # and MSVC's vadefs.h/vcruntime.h break TinyCC C99 compilation (#stdint.h uintptr_t error).
     _prepend_env_path("CPLUS_INCLUDE_PATH", include_dirs, use_forward_slash=True)
+
+    # Proactively sanitize CPATH to remove any inherited MSVC/UCRT paths
+    cur_cpath = os.environ.get("CPATH", "")
+    if cur_cpath:
+        cleaned_parts = [
+            p for p in cur_cpath.split(os.pathsep)
+            if p and not ("msvc" in p.lower() or "windows kits" in p.lower() or "ucrt" in p.lower())
+        ]
+        if cleaned_parts:
+            os.environ["CPATH"] = os.pathsep.join(cleaned_parts)
+        else:
+            os.environ.pop("CPATH", None)
 
 
 _discover_and_inject_toolchains()

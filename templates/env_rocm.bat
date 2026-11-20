@@ -16,8 +16,8 @@ if errorlevel 1 (
 rem Configure Portable MSVC environment if present (ROCm / Triton acceleration)
 if exist "%ROCM_ROOT%\msvc\setup_x64.bat" (
     call "%ROCM_ROOT%\msvc\setup_x64.bat" >nul 2>&1
-    set "CPATH=%INCLUDE:\=/%"
     set "CPLUS_INCLUDE_PATH=%INCLUDE:\=/%"
+    set "CPATH="
 )
 
 set "TORCH_BLAS_PREFER_HIPBLASLT=1"

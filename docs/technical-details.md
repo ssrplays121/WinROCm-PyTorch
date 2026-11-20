@@ -88,10 +88,10 @@ WinROCm-PyTorch injects a dynamic configuration hook at startup via `python\Lib\
 ├─────────────────────────────────────────────────────────────┤
 │ 1. Locate MSVC via vswhere.exe or registry/disk globbing    │
 │    -> Appends Hostx64/x64 tools to PATH                     │
-│    -> Appends MSVC include directories to INCLUDE / CPATH   │
+│    -> Appends MSVC include directories to INCLUDE / CPLUS   │
 │                                                             │
 │ 2. Discover Windows 10/11 SDK UCRT headers                  │
-│    -> Appends ucrt, shared, and um to INCLUDE / CPATH       │
+│    -> Appends ucrt, shared, and um to INCLUDE / CPLUS       │
 │                                                             │
 │ 3. Materialize ROCm SDK headers                             │
 │    -> Discovers _rocm_sdk_devel and sets ROCM_PATH/HIP_PATH │
@@ -115,7 +115,7 @@ WinROCm-PyTorch injects a dynamic configuration hook at startup via `python\Lib\
 The shim searches for:
 1. **MSVC Toolset (v143 / v144 / v180+)**: Uses `vswhere.exe` to find Visual Studio 2022 or Visual Studio 2026 previews. If `vswhere.exe` is absent, it performs heuristic path discovery under `Program Files\Microsoft Visual Studio\`.
 2. **Windows 10/11 SDK Universal CRT**: Probes `Program Files (x86)\Windows Kits\10\Include\<SDK-Version>\` and automatically discovers `ucrt`, `shared`, and `um` header folders.
-3. **Environment Injection**: Normalizes discovered paths and prepends them to `PATH`, `INCLUDE`, `CPATH`, and `CPLUS_INCLUDE_PATH`.
+3. **Environment Injection**: Normalizes discovered paths and prepends them to `PATH`, `INCLUDE`, and `CPLUS_INCLUDE_PATH`.
 
 ---
 
@@ -232,7 +232,7 @@ When Portable MSVC is present, toolchain environment variables are automatically
    - On Python startup, `_discover_and_inject_toolchains()` detects `<rocm_root>\msvc` before searching system paths.
    - Prepends MSVC and SDK binary paths to `PATH`.
    - Prepends MSVC and UCRT include directories to `INCLUDE`.
-   - Prepends MSVC and UCRT include directories with forward slashes (`/`) to `CPATH` and `CPLUS_INCLUDE_PATH` for HIPRTC / AMD Clang.
+   - Prepends MSVC and UCRT include directories with forward slashes (`/`) to `CPLUS_INCLUDE_PATH` for HIPRTC / AMD Clang (leaving `CPATH` unpolluted for TinyCC in Triton).
    - Prepends MSVC and UCRT library directories to `LIB`.
    - Sets `DISTUTILS_USE_SDK=1` and `MSSdk=1` to notify setuptools that the SDK environment is pre-initialized.
 2. **Launchers (`env_rocm.bat`, `env_rocm.ps1`, `shell_rocm.bat`)**:
