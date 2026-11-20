@@ -1,0 +1,118 @@
+name: Manual Final Release Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: 'Release Tag (leave blank to auto-detect version or next revision, e.g. v0.5.2 or v0.5.2-1)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  manual-final-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Release Tag and Revision
+        id: release_info
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $setupContent = Get-Content setup_rocm_portable.ps1 -Raw
+          $baseVer = if ($setupContent -match '\$Script:Version\s*=\s*"([^"]+)"') { $matches[1] } else { "0.5.2" }
+          $config = Import-PowerShellDataFile -Path config/releases.psd1
+          $rocmVersion = $config.DefaultRelease
+          
+          $customTag = "${{ github.event.inputs.custom_tag }}".Trim()
+          
+          if ($customTag) {
+              $tagName = $customTag
+          } else {
+              $existingTags = @()
+              try {
+                  $existingTags = @(gh release list --limit 100 --json tagName -q ".[].tagName")
+              } catch {
+                  Write-Warning "Could not fetch existing release tags: $($_.Exception.Message)"
+              }
+              
+              if ($existingTags -notcontains "v$baseVer") {
+                  $tagName = "v$baseVer"
+              } else {
+                  # Calculate next revision suffix: v0.5.2-1, v0.5.2-2
+                  $pattern = "^v$([regex]::Escape($baseVer))-(\d+)$"
+                  $revs = @()
+                  foreach ($t in $existingTags) {
+                      if ($t -match $pattern) {
+                          $revs += [int]$matches[1]
+                      }
+                  }
+                  $nextRev = if ($revs.Count -gt 0) { ($revs | Measure-Object -Maximum).Maximum + 1 } else { 1 }
+                  $tagName = "v$baseVer-$nextRev"
+              }
+          }
+          
+          $zipName = "WinROCm-PyTorch-$tagName.zip"
+          
+          Write-Host "Target Release Tag: $tagName"
+          Write-Host "Target Release Archive: $zipName"
+          
+          "BASE_VER=$baseVer" >> $env:GITHUB_OUTPUT
+          "ROCM_VERSION=$rocmVersion" >> $env:GITHUB_OUTPUT
+          "TAG_NAME=$tagName" >> $env:GITHUB_OUTPUT
+          "ZIP_NAME=$zipName" >> $env:GITHUB_OUTPUT
+
+      - name: Package Essential Files into Release ZIP
+        shell: pwsh
+        env:
+          ZIP_NAME: ${{ steps.release_info.outputs.ZIP_NAME }}
+        run: |
+          $zipName = $env:ZIP_NAME
+          $staging = Join-Path $env:RUNNER_TEMP "staging\WinROCm-PyTorch"
+          if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+          
+          New-Item -ItemType Directory -Path "$staging\config" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$staging\scripts" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$staging\templates" -Force | Out-Null
+          
+          Copy-Item "setup.bat", "setup_rocm_portable.ps1", "README.md", "LICENSE" -Destination "$staging\"
+          Copy-Item "config\releases.psd1" -Destination "$staging\config\"
+          Copy-Item "scripts\portable-msvc.py", "scripts\update.ps1", "scripts\status.ps1", "scripts\add_to_path.ps1", "scripts\remove_from_path.ps1" -Destination "$staging\scripts\"
+          Copy-Item "templates\*" -Destination "$staging\templates\"
+          
+          $zipOutput = Join-Path (Get-Location) $zipName
+          if (Test-Path $zipOutput) { Remove-Item $zipOutput -Force }
+          Compress-Archive -Path "$staging\*" -DestinationPath $zipOutput -Force
+          
+          $hash = (Get-FileHash -Path $zipOutput -Algorithm SHA256).Hash
+          "$hash  $zipName" | Out-File -FilePath "checksums.txt" -Encoding ascii
+          
+          Write-Host "Final Package created: $zipName ($((Get-Item $zipOutput).Length) bytes)"
+          Write-Host "SHA256: $hash"
+
+      - name: Publish Official Final Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.release_info.outputs.TAG_NAME }}
+          BASE_VER: ${{ steps.release_info.outputs.BASE_VER }}
+          ROCM_VER: ${{ steps.release_info.outputs.ROCM_VERSION }}
+          ZIP_NAME: ${{ steps.release_info.outputs.ZIP_NAME }}
+        run: |
+          $tagName = $env:TAG_NAME
+          $zipName = $env:ZIP_NAME
+          $rocmVer = $env:ROCM_VER
+          $title = "WinROCm-PyTorch $tagName (ROCm $rocmVer)"
+          
+          Write-Host "Publishing official final release: $tagName..." -ForegroundColor Cyan
+          gh release create $tagName $zipName checksums.txt `
+              --title "$title" `
+              --notes "### WinROCm-PyTorch $tagName`n`n- Pinned AMD ROCm Default Release: **$rocmVer**`n- Cryptographic SHA-256 Checksums in \`checksums.txt\` file.`n`n#### Quick Start (Zero Command-Line Setup):`n1. Download and extract \`$zipName\` into \`C:\rocm\` (or desired folder).`n2. Double-click \`setup.bat\` and choose option \`1\` to install." `
+              --latest

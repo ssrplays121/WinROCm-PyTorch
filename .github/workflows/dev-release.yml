@@ -1,0 +1,128 @@
+name: Dev Release (Automatic)
+
+on:
+  push:
+    branches: [ dev ]
+    paths:
+      - 'setup.bat'
+      - 'setup_rocm_portable.ps1'
+      - 'config/releases.psd1'
+      - 'scripts/**'
+      - 'templates/**'
+      - 'README.md'
+      - 'LICENSE'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  build-dev-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version and Revision Number
+        id: dev_info
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Base Version from setup_rocm_portable.ps1
+          $setupContent = Get-Content setup_rocm_portable.ps1 -Raw
+          $baseVer = if ($setupContent -match '\$Script:Version\s*=\s*"([^"]+)"') { $matches[1] } else { "0.5.2" }
+          $config = Import-PowerShellDataFile -Path config/releases.psd1
+          $rocmVersion = $config.DefaultRelease
+          
+          # 2. Query existing tags to calculate revision number
+          $existingTags = @()
+          try {
+              $existingTags = @(gh release list --limit 100 --json tagName -q ".[].tagName")
+          } catch {
+              Write-Warning "Could not fetch existing release tags: $($_.Exception.Message)"
+          }
+          
+          $pattern = "^v$([regex]::Escape($baseVer))-dev-(\d+)$"
+          $revs = @()
+          foreach ($t in $existingTags) {
+              if ($t -match $pattern) {
+                  $revs += [int]$matches[1]
+              }
+          }
+          
+          $nextRev = if ($revs.Count -gt 0) { ($revs | Measure-Object -Maximum).Maximum + 1 } else { 1 }
+          
+          $tag = "v$baseVer-dev-$nextRev"
+          $zipName = "WinROCm-PyTorch-$tag.zip"
+          $checksumFile = "checksums-$tag.txt"
+          
+          Write-Host "Base Version : $baseVer"
+          Write-Host "Revision     : $nextRev"
+          Write-Host "Target Tag   : $tag"
+          Write-Host "Target ZIP   : $zipName"
+          
+          "BASE_VER=$baseVer" >> $env:GITHUB_OUTPUT
+          "REVISION=$nextRev" >> $env:GITHUB_OUTPUT
+          "ROCM_VERSION=$rocmVersion" >> $env:GITHUB_OUTPUT
+          "TAG_NAME=$tag" >> $env:GITHUB_OUTPUT
+          "ZIP_NAME=$zipName" >> $env:GITHUB_OUTPUT
+          "CHECKSUM_FILE=$checksumFile" >> $env:GITHUB_OUTPUT
+
+      - name: Package Dev ZIP
+        shell: pwsh
+        env:
+          ZIP_NAME: ${{ steps.dev_info.outputs.ZIP_NAME }}
+          CHECKSUM_FILE: ${{ steps.dev_info.outputs.CHECKSUM_FILE }}
+        run: |
+          $zipName = $env:ZIP_NAME
+          $checksumFile = $env:CHECKSUM_FILE
+          $staging = Join-Path $env:RUNNER_TEMP "staging\WinROCm-PyTorch"
+          if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+          
+          New-Item -ItemType Directory -Path "$staging\config" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$staging\scripts" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$staging\templates" -Force | Out-Null
+          
+          # Copy essential 23 files maintaining directory structure
+          Copy-Item "setup.bat", "setup_rocm_portable.ps1", "README.md", "LICENSE" -Destination "$staging\"
+          Copy-Item "config\releases.psd1" -Destination "$staging\config\"
+          Copy-Item "scripts\portable-msvc.py", "scripts\update.ps1", "scripts\status.ps1", "scripts\add_to_path.ps1", "scripts\remove_from_path.ps1" -Destination "$staging\scripts\"
+          Copy-Item "templates\*" -Destination "$staging\templates\"
+          
+          $zipOutput = Join-Path (Get-Location) $zipName
+          if (Test-Path $zipOutput) { Remove-Item $zipOutput -Force }
+          Compress-Archive -Path "$staging\*" -DestinationPath $zipOutput -Force
+          
+          $hash = (Get-FileHash -Path $zipOutput -Algorithm SHA256).Hash
+          "$hash  $zipName" | Out-File -FilePath $checksumFile -Encoding ascii
+          
+          Write-Host "Dev Package created: $zipName ($((Get-Item $zipOutput).Length) bytes)"
+          Write-Host "SHA256: $hash"
+
+      - name: Publish Dev Pre-Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.dev_info.outputs.TAG_NAME }}
+          BASE_VER: ${{ steps.dev_info.outputs.BASE_VER }}
+          REVISION: ${{ steps.dev_info.outputs.REVISION }}
+          ROCM_VER: ${{ steps.dev_info.outputs.ROCM_VERSION }}
+          ZIP_NAME: ${{ steps.dev_info.outputs.ZIP_NAME }}
+          CHECKSUM_FILE: ${{ steps.dev_info.outputs.CHECKSUM_FILE }}
+        run: |
+          $tag = $env:TAG_NAME
+          $zipName = $env:ZIP_NAME
+          $checksumFile = $env:CHECKSUM_FILE
+          $title = "WinROCm-PyTorch $tag (ROCm $env:ROCM_VER)"
+          
+          $commitSha = $env:GITHUB_SHA.Substring(0, 7)
+          $patchDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm UTC")
+          
+          Write-Host "Creating new Dev Pre-Release: $tag..." -ForegroundColor Cyan
+          gh release create $tag $zipName $checksumFile `
+              --title "$title" `
+              --notes "### WinROCm-PyTorch $tag`n`n> [!WARNING]`n> This is an **active development build (revision $env:REVISION)** compiled automatically from the \`dev\` branch for testing and early validation.`n`n- Base Version: **$env:BASE_VER**`n- Revision: **$env:REVISION**`n- Pinned AMD ROCm Default: **$env:ROCM_VER**`n- Commit: \`$commitSha\` at $patchDate`n- Cryptographic SHA-256 hashes recorded in \`$checksumFile\`." `
+              --prerelease
