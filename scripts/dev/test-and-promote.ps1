@@ -268,6 +268,9 @@ if (Test-Path -Path $changelogPath) {
     $newChangelogSection = ($entryLines -join "`n")
     # Insert right below the header (after "# Changelog\n\n...adheres to [Semantic Versioning]...\n")
     $marker = "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)."
+    if ($clRaw.Contains("## [Unreleased]")) {
+        $marker = "## [Unreleased]"
+    }
     if ($clRaw.Contains($marker)) {
         $clRaw = $clRaw.Replace($marker, "$marker`n`n$newChangelogSection")
         Set-Content -Path $changelogPath -Value $clRaw -Encoding utf8

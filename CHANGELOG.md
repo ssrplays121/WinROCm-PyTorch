@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.5.2] - 2026-11-20
+
+### Fixed
+- **Triton JIT TinyCC CPATH Pollution (`vadefs.h:65`)**: Directed MSVC and Windows SDK UCRT include directories exclusively to `CPLUS_INCLUDE_PATH` and sanitized `CPATH`. This prevents TinyCC (`tcc.exe`) in `triton-windows` from loading incompatible MSVC CRT headers during `hip_utils.c` compilation while preserving full C++ STL header resolution for MIOpen BatchNorm JIT via HIPRTC.
+- **Verification Teardown Deadlock & Menu Freeze**: Replaced standard Python runtime exit in `verify_rocm.py` with Win32 `TerminateProcess` after stream flushing, eliminating Windows Loader Lock deadlocks from unfinalized native LLVM/MLIR thread pools and ensuring the caller batch script always returns promptly to the interactive menu.
+
 ## [0.5.1] - 2026-11-06
 
 ### Added
@@ -14,8 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Explicit Triton Release Pinning**: Pinned compatible `triton-windows` `3.5.1.post24` in `config/releases.psd1` for deterministic candidate resolution.
 
 ### Fixed
-- **Triton JIT TinyCC CPATH Pollution (`vadefs.h:65`)**: Directed MSVC and Windows SDK UCRT include directories exclusively to `CPLUS_INCLUDE_PATH` and sanitized `CPATH`. This prevents TinyCC (`tcc.exe`) in `triton-windows` from loading incompatible MSVC CRT headers during `hip_utils.c` compilation while preserving full C++ STL header resolution for MIOpen BatchNorm JIT via HIPRTC.
-- **Verification Teardown Deadlock & Menu Freeze**: Replaced standard Python runtime exit in `verify_rocm.py` with Win32 `TerminateProcess` after stream flushing, eliminating Windows Loader Lock deadlocks from unfinalized native LLVM/MLIR thread pools and ensuring the caller batch script always returns promptly to the interactive menu.
 - **PowerShell Native Argument Quote-Stripping SyntaxError**: Replaced command-line `-c` execution in `scripts/update.ps1` with standard input piping (`$constraintsPy | & $pythonExe -`), preventing Windows PowerShell 5.1 from stripping internal double quotes and eliminating the `SyntaxError: invalid syntax. Perhaps you forgot a comma?` crash during constraints generation.
 - **Triton-Windows False "Upgrade Available" Detection**: Replaced hardcoded `IsUpgrade = $true` in `scripts/update.ps1` with accurate version comparison against candidate/PyPI matching wheels, correctly recognizing `3.5.1.post24` as `[Up to date]`.
 
@@ -133,4 +139,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diagnostic probe (`-Diagnose`) generating `diagnose.txt` with username redaction and GPU/Torch verification.
 - Pester test suite (`tests/Setup.Tests.ps1`) and PSScriptAnalyzer configuration (`tests/PSScriptAnalyzerSettings.psd1`).
 - GitHub Actions CI workflows (`lint-test.yml` and scheduled `url-check.yml`).
+
+[Unreleased]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/ssrplays121/WinROCm-PyTorch/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/ssrplays121/WinROCm-PyTorch/releases/tag/v0.1.0
+
 
