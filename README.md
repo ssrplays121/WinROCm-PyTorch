@@ -52,10 +52,30 @@ Running PyTorch on AMD GPUs under Windows has traditionally required navigating 
 
 We recommend installing into a short path (such as `C:\rocm`) to avoid Windows `MAX_PATH` limitations.
 
-### 1. Clone & Install
+### 1. Download & Install (Recommended)
 
-1. Open a Command Prompt or PowerShell terminal:
-2. Clone the repository:
+The easiest and fastest method (~65 KB download, zero Git or command-line experience required):
+
+1. **Download**: Go to the [Releases](https://github.com/ssrplays121/WinROCm-PyTorch/releases) page and download the latest **`WinROCm-PyTorch-v*.zip`**.
+2. **Extract**: 
+   - Open your `Downloads` folder.
+   - Right-click the downloaded `.zip` file and select **Extract All...**
+   - In the destination path, enter **`C:\rocm`** (or your preferred short path) and click **Extract**.
+3. **Launch Setup**:
+   - Open the extracted folder (`C:\rocm`).
+   - Double-click **`setup.bat`**.
+4. **Follow the On-Screen Menu**:
+   - An easy-to-use interactive menu will appear in a console window.
+   - Type **`1`** and press **Enter** to install everything automatically!
+
+---
+
+### Alternative: Install via Git Clone (Developers & Contributors)
+
+If you are a developer planning to contribute, run test suites, or build from source:
+
+1. Open a Command Prompt or PowerShell terminal.
+2. Clone the repository into a short path:
    ```cmd
    git clone https://github.com/ssrplays121/WinROCm-PyTorch.git C:\rocm
    cd /d C:\rocm
@@ -64,7 +84,7 @@ We recommend installing into a short path (such as `C:\rocm`) to avoid Windows `
    ```cmd
    setup.bat install
    ```
-   *(For automated scripts or CI environments, pass `-y` to run unattended: `setup.bat install -y`)*.
+   *(For unattended or automated CI scripts, pass `-y`: `setup.bat install -y`)*.
 
 ### 2. Verify Hardware Acceleration
 
