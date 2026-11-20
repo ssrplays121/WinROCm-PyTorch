@@ -105,33 +105,34 @@ jobs:
           CATALOG_CHANGED: ${{ steps.release_info.outputs.CATALOG_CHANGED }}
           ZIP_NAME: ${{ env.ZIP_NAME }}
         run: |
-          $title = "WinROCm-PyTorch $TAG_NAME (ROCm $ROCM_VER)"
+          $tagName = $env:TAG_NAME
+          $zipName = $env:ZIP_NAME
+          $toolVer = $env:TOOL_VER
+          $rocmVer = $env:ROCM_VER
+          $catalogChanged = ($env:CATALOG_CHANGED -eq "True" -or $env:CATALOG_CHANGED -eq "true")
+          $title = "WinROCm-PyTorch $tagName (ROCm $rocmVer)"
           
-          $releaseExists = $false
-          try {
-              gh release view $TAG_NAME | Out-Null
-              $releaseExists = $true
-          } catch {
-              $releaseExists = $false
-          }
+          # Check whether the release tag already exists on GitHub
+          & gh release view $tagName 2>&1 | Out-Null
+          $releaseExists = ($LASTEXITCODE -eq 0)
           
-          if (-not $releaseExists -or $CATALOG_CHANGED -eq "True") {
-              Write-Host "Creating new GitHub Release: $TAG_NAME..." -ForegroundColor Cyan
-              gh release create $TAG_NAME $ZIP_NAME checksums.txt `
+          if (-not $releaseExists -or $catalogChanged) {
+              Write-Host "Creating new GitHub Release: $tagName..." -ForegroundColor Cyan
+              gh release create $tagName $zipName checksums.txt `
                   --title "$title" `
-                  --notes "### WinROCm-PyTorch $TAG_NAME`n`n- Pinned AMD ROCm Default Release: **$ROCM_VER**`n- Verified SHA-256 Checksums in \`checksums.txt\` file.`n- Quick Start: Download and extract \`$ZIP_NAME\` to \`C:\rocm\`, then run \`setup.bat install\`." `
+                  --notes "### WinROCm-PyTorch $tagName`n`n- Pinned AMD ROCm Default Release: **$rocmVer**`n- Verified SHA-256 Checksums in \`checksums.txt\` file.`n- Quick Start: Download and extract \`$zipName\` to \`C:\rocm\`, then run \`setup.bat install\`." `
                   --latest
           } else {
-              Write-Host "Switching out release assets on existing release $TAG_NAME (Patch Update)..." -ForegroundColor Yellow
-              gh release upload $TAG_NAME $ZIP_NAME checksums.txt --clobber
+              Write-Host "Switching out release assets on existing release $tagName (Patch Update)..." -ForegroundColor Yellow
+              gh release upload $tagName $zipName checksums.txt --clobber
               
               # Append patch notice to release notes
               $patchDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm UTC")
-              $commitSha = $env:GITHUB_SHA.Substring(0, 7)
-              $patchNote = "`n`n> [!NOTE]`n> **Patch Updated**: Asset \`$ZIP_NAME\` refreshed with commit \`$commitSha\` at $patchDate."
-              $currentNotes = gh release view $TAG_NAME --json body -q .body
+              $commitSha = if ($env:GITHUB_SHA) { $env:GITHUB_SHA.Substring(0, 7) } else { "patch" }
+              $patchNote = "`n`n> [!NOTE]`n> **Patch Updated**: Asset \`$zipName\` refreshed with commit \`$commitSha\` at $patchDate."
+              $currentNotes = gh release view $tagName --json body -q .body
               $tempNotesFile = Join-Path $env:RUNNER_TEMP "release_notes.md"
               Set-Content -Path $tempNotesFile -Value "$currentNotes$patchNote" -Encoding utf8
-              gh release edit $TAG_NAME --notes-file $tempNotesFile
+              gh release edit $tagName --notes-file $tempNotesFile
               Remove-Item -Path $tempNotesFile -Force -ErrorAction SilentlyContinue
           }
