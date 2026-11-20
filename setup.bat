@@ -783,9 +783,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup_rocm_portabl
 exit /b %errorlevel%
 
 :do_stage_release
+if not exist "%~dp0scripts\dev\stage-release.ps1" (
+    echo [ERROR] Maintainer command 'stage-release' requires cloning the full git repository.
+    exit /b 1
+)
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\dev\stage-release.ps1" !REST_ARGS!
 exit /b %errorlevel%
 
 :do_test_and_promote
+if not exist "%~dp0scripts\dev\test-and-promote.ps1" (
+    echo [ERROR] Maintainer command 'test-and-promote' requires cloning the full git repository.
+    exit /b 1
+)
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\dev\test-and-promote.ps1" !REST_ARGS!
 exit /b %errorlevel%
